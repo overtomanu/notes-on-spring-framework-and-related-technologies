@@ -1,0 +1,254 @@
+// enabling annotation driven caching
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+@Configuration
+@EnableCaching                                                 // Enable caching
+public class CachingConfig {
+    @Bean
+    public CacheManager cacheManager() {                       // declare a cache manager
+        return new ConcurrentMapCacheManager();
+    }
+}
+
+<!-- enable caching in xml configuration-->
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:cache="http://www.springframework.org/schema/cache"
+xsi:schemaLocation="
+http://www.springframework.org/schema/beans
+http://www.springframework.org/schema/beans/spring-beans.xsd
+http://www.springframework.org/schema/cache
+http://www.springframework.org/schema/cache/spring-cache.xsd">
+    <cache:annotation-driven />
+    <bean id="cacheManager" class="org.springframework.cache.concurrent.ConcurrentMapCacheManager" />
+</beans>
+
+Spring cache manager implementations
+SimpleCacheManager
+NoOpCacheManager
+ConcurrentMapCacheManager
+CompositeCacheManager
+EhCacheCacheManager
+RedisCacheManager
+
+Other commercial cache managers:
+Hazelcast
+Infinispan
+Couchbase
+Redis
+Caffeine
+Pivotal GemFire
+
+-----------------------------------
+CompositeCacheManager configuration:
+
+@Bean
+public CacheManager cacheManager(net.sf.ehcache.CacheManager cm,javax.cache.CacheManager jcm) {
+    CompositeCacheManager cacheManager = new CompositeCacheManager();
+    List<CacheManager> managers = new ArrayList<CacheManager>();
+    managers.add(new JCacheCacheManager(jcm));
+    managers.add(new EhCacheCacheManager(cm))
+    managers.add(new RedisCacheManager(redisTemplate()));
+    cacheManager.setCacheManagers(managers);
+    return cacheManager;
+}
+
+
+Using EhCache with spring:
+Since Ehcache is fully JSR 107 compliant, JSR 107 annotations can be used instead of Spring Cache annotations. Spring recommends to choose one side and not to mix the annotations at all. The following table shows a comparison of the available cache annotations:
+
+JSR 107 / JCache Annotations	Spring Cache Annotations
+----------------------------------------------------------
+@CacheResult	                @Cacheable
+@CacheRemove	                @CacheEvict
+@CacheRemoveAll	                @CacheEvict(allEntries=true)
+@CachePut	                    @CachePut
+@CacheDefaults	                @CacheConfig
+
+
+EhCache maven dependencies:
+
+<dependency>
+    <groupId>net.sf.ehcache</groupId>
+    <artifactId>ehcache</artifactId>
+    <version>2.9.0</version>
+</dependency>
+
+<!-- Spring caching framework inside this -->
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-context</artifactId>
+    <version>4.1.4.RELEASE</version>
+</dependency>
+
+<!-- Support for Ehcache and others -->
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-context-support</artifactId>
+    <version>4.1.4.RELEASE</version>
+</dependency>
+
+Ehcache settings file
+---------------------
+<!-- src/main/resource/ehcache.xml -->
+<!-- minimal configuration -->
+<ehcache>
+    <cache name="spittleCache"
+    maxBytesLocalHeap="50m"
+    timeToLiveSeconds="100">
+    </cache>
+</ehcache>
+
+<ehcache xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="ehcache.xsd" 
+    updateCheck="true"
+    monitoring="autodetect" 
+    dynamicConfig="true">
+
+    <diskStore path="java.io.tmpdir" />
+
+    <cache name="movieFindCache" 
+        maxEntriesLocalHeap="10000"
+        maxEntriesLocalDisk="1000" 
+        eternal="false" 
+        diskSpoolBufferSizeMB="20"
+        timeToIdleSeconds="300" timeToLiveSeconds="600"
+        memoryStoreEvictionPolicy="LFU" 
+        transactionalMode="off">
+        <persistence strategy="localTempSwap" />
+    </cache>
+</ehcache>
+
+EhCache spring java config
+-------------------------
+// @EnableCaching annotation is used to enable cache support in spring configuration
+package com.mkyong.test;
+
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.ehcache.EhCacheCacheManager;
+import org.springframework.cache.ehcache.EhCacheManagerFactoryBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
+
+@Configuration
+@EnableCaching
+@ComponentScan({ "com.mkyong.*" })
+public class AppConfig {
+
+    @Bean
+    public CacheManager cacheManager() {
+        return new EhCacheCacheManager(ehCacheCacheManager().getObject());
+    }
+
+    @Bean
+    public EhCacheManagerFactoryBean ehCacheCacheManager() {
+        EhCacheManagerFactoryBean cmfb = new EhCacheManagerFactoryBean();
+        cmfb.setConfigLocation(new ClassPathResource("ehcache.xml"));
+        cmfb.setShared(true);
+        return cmfb;
+    }
+}
+
+Annotations for caching
+-----------------------
+
+Annotation              Description
+----------------------------------------------
+@Cacheable              Indicates that Spring should look in a cache for the method’s return value before invoking the method. If the value is found, the cached value is returned. If not, then the method is invoked and the return value is put in the cache.
+@CachePut               Indicates that Spring should put the method’s return value in a cache. The cache isn’t checked prior to method invocation, and the method is always invoked.
+@CacheEvict             Indicates that Spring should evict one or more entries from a cache.
+@Caching                A grouping annotation for applying multiples of the other caching annotations at once.
+
+
+@Cacheable("addresses")
+public String getAddress(Customer customer) {...}
+
+//specifying multiple cache's
+@Cacheable({"addresses", "directory"})
+public String getAddress(Customer customer) {...}
+
+// specifying cache key using SpEL expressions
+@Cacheable(value="books", key="#isbn"
+public Book findBook(ISBN isbn, boolean checkWarehouse, boolean includeUsed)
+
+@Cacheable(value="books", key="#isbn.rawNumber")
+public Book findBook(ISBN isbn, boolean checkWarehouse, boolean includeUsed)
+
+@Cacheable(value="books", key="T(someType).hash(#isbn)")
+public Book findBook(ISBN isbn, boolean checkWarehouse, boolean includeUsed)
+
+// conditional caching
+// the following method will be cached, only if the argument name has a length shorter then 32
+@Cacheable(value="book", condition="#name.length < 32")
+public Book findBook(String name)
+
+// In addition the conditional parameter, the unless parameter can be used to veto the adding of a value to the cache. Unlike 
+// conditional, unless SpEL expressions are evalulated after the method has been called
+// only cache paperback books
+@Cacheable(value="book", condition="#name.length < 32", unless="#result.hardback")
+public Book findBook(String name)
+
+// when a brand-new Spittle is saved via the save() method on
+// SpittleRepository, there’s a high likelihood that it will soon be asked for. It makes
+// sense to toss the Spittle into the cache when save() is called
+@CachePut("spittleCache")
+Spittle save(Spittle spittle);
+
+// @CacheEvict demarcates methods that perform cache eviction, that is methods that act as triggers for removing data from 
+// the cache. allows a key or a condition to be specified but in addition, features an extra parameter allEntries which 
+// indicates whether a cache-wide eviction
+@CacheEvict(value = "books", allEntries=true)
+public void loadBooks(InputStream batch)
+
+//There are cases when multiple annotations of the same type, such as @CacheEvict or @CachePut need to be specified, for 
+// example because the condition or the key expression is different between different caches. Unfortunately Java does not support 
+// such declarations however there is a workaround - using a enclosing annotation
+@Caching(evict = { @CacheEvict("primary"), @CacheEvict(value = "secondary", key = "#p0") })
+public Book importBooks(String deposit, Date date)
+
+// With the @CacheConfig annotation, we can streamline some of the cache configuration into a single place at the class level
+@CacheConfig(cacheNames={"addresses"})
+public class CustomerDataService {
+
+    @Cacheable
+    public String getAddress(Customer customer) {...}
+}
+
+@Cacheable and @CachePut share a common set of attributes.
+
+Attribute       Type        Description
+------------------------------
+value           String[]    The name(s) of the cache(s) to use
+condition       String      A SpEL expression that, if it evaluates to false, results in caching not being applied to the method call
+key             String      A SpEL expression to calculate a custom cache key
+unless          String      A SpEL expression that, if it evaluates to true, prevents the return value from being put in the cache
+
+Spring offers several SpEL extensions specifically for defining cache rules.
+
+Expression              Description
+--------------------------------------
+#root.args              The arguments passed in to the cached method, as an array
+#root.caches            The caches this method is executed against, as an array
+#root.target            The target object
+#root.targetClass       The target object’s class; a shortcut for #root.target.class
+#root.method            The cached method
+#root.methodName        The cached method’s name; a shortcut for #root.method.name
+#result                 The return value from the method call (not available with @Cacheable)
+#Argument               The name of any method argument (such as #argName) or argument index (such as #a0 or #p0)
+
+The @CacheEvict annotation’s attributes specify which cache entries should be removed.
+
+Attribute           Type        Description
+---------------------------------------------
+value               String[]    The name(s) of the cache(s) to use.
+key                 String      A SpEL expression to calculate a custom cache key.
+condition           String      A SpEL expression that, if it evaluates to false, results in caching not being applied to the method call.
+allEntries          boolean     If true, all entries in the specified cache(s) should be removed.
+beforeInvocation    boolean     If true, the entries are removed from the cache before the method is invoked. If false (the default), the entries

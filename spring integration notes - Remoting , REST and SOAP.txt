@@ -1,0 +1,987 @@
+spring integration notes
+--------------------
+Spring remoting can done any one of the following models
+
+RPC model                           Useful when...
+---------------------------------------------------
+Remote Method Invocation(RMI)       Accessing/exposing Java-based services when network constraints such as firewalls aren’t a factor.
+Hessian or Burlap                   Accessing/exposing Java-based services over HTTP when network constraints are a factor. Hessian is a binary protocol, whereas Burlap is XML-based.
+HTTP invoker                        Accessing/exposing Spring-based services when network constraints are a factor and you desire Java serialization over XML or proprietary serialization.
+JAX-RPC and JAX-WS                  Accessing/exposing platform-neutral, SOAP-based web services.
+
+Exposing spring bean for remote http based Invocation
+--------------------------
+@Bean
+public HttpInvokerServiceExporter
+httpExportedSpitterService(SpitterService service) {
+    HttpInvokerServiceExporter exporter =
+    new HttpInvokerServiceExporter();
+    exporter.setService(service);
+    exporter.setServiceInterface(SpitterService.class);
+    return exporter;
+}
+
+@Bean
+public HandlerMapping httpInvokerMapping() {
+    SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+    Properties mappings = new Properties();
+    mappings.setProperty("/spitter.service",
+    "httpExportedSpitterService");
+    mapping.setMappings(mappings);
+    return mapping;
+}
+
+// service interface
+// SpitterServiceImpl exposed as bean with name "SpitterService"
+
+package com.habuma.spittr.service;
+import java.util.List;
+import com.habuma.spittr.domain.Spitter;
+import com.habuma.spittr.domain.Spittle;
+public interface SpitterService {
+    List < Spittle > getRecentSpittles(int count);
+    void saveSpittle(Spittle spittle);
+    void saveSpitter(Spitter spitter);
+    Spitter getSpitter(long id);
+    void startFollowing(Spitter follower, Spitter followee);
+    List < Spittle > getSpittlesForSpitter(Spitter spitter);
+    List < Spittle > getSpittlesForSpitter(String username);
+    Spitter getSpitter(String username);
+    Spittle getSpittleById(long id);
+    void deleteSpittle(long id);
+    List < Spitter > getAllSpitters();
+}
+
+
+consuming http invoker based service
+------------------------
+// After declaring factory bean as below, we can inject SpitterService bean in consumer beans
+@Bean
+public HttpInvokerProxyFactoryBean spitterService() {
+    HttpInvokerProxyFactoryBean proxy = new HttpInvokerProxyFactoryBean();
+    proxy.setServiceUrl("http://localhost:8080/Spitter/spitter.service");
+    proxy.setServiceInterface(SpitterService.class);
+    return proxy;
+}
+
+
+spring JAX-WS
+-------------
+The JAX-WS programming model involves using annotations to declare a class and its methods as web service operations.
+A class that’s annotated with @WebService is considered a web service endpoint,
+and its methods—annotated with @WebMethod—are the operations.
+To have autowiring support for spring beans in JAX-WS endpoints, the endpoint class has to extend SpringBeanAutowiringSupport.
+Alternatively, we can also use SimpleJaxWsServiceExporter to expose bean as SOAP webservice but it requires that the JAX-WS runtime support publishing of endpoints to a specified address. The JAX-WS runtime that ships with Sun’s JDK 1.6 fits the bill, but other JAX-WS implementations, including the reference implementation of JAX-WS, may not
+
+package com.habuma.spittr.remoting.jaxws;
+import java.util.List;
+import javax.jws.WebMethod;
+import javax.jws.WebService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.context.support.SpringBeanAutowiringSupport;
+import com.habuma.spittr.domain.Spitter;
+import com.habuma.spittr.domain.Spittle;
+import com.habuma.spittr.service.SpitterService;
+
+@WebService(serviceName = "SpitterService")
+public class SpitterServiceEndpoint
+extends SpringBeanAutowiringSupport {                                       // Enable autowiring
+
+    @Autowired SpitterService spitterService;                               // Autowire SpitterService
+    @WebMethod
+    public void addSpittle(Spittle spittle) {
+        spitterService.saveSpittle(spittle);                                // delegating to spitterService
+    }
+
+    @WebMethod
+    public void deleteSpittle(long spittleId) {
+        spitterService.deleteSpittle(spittleId);
+    }
+
+    @WebMethod
+    public List < Spittle > getRecentSpittles(int spittleCount) {
+        return spitterService.getRecentSpittles(spittleCount);
+    }
+
+    @WebMethod
+    public List < Spittle > getSpittlesForSpitter(Spitter spitter) {
+        return spitterService.getSpittlesForSpitter(spitter);
+    }
+}
+-------------------------------------
+Spring REST
+-------------------------------------
+
+JSON stands for Javascript Object Notation
+Lightweight data format for storing and exchanging data in plain text
+Language independent can use with any programming language: Java, C#, Python etc
+
+Points about json
+• Curley braces define objects in JSON
+• Object members are name / value pairs
+• Delimited by colons
+• Name is always in double-quotes
+
+Json values
+• Numbers: no quotes
+• String: in double quotes
+• Boolean: true, false
+• Can be Nested JSON object
+• Can be Array
+• can be just null
+
+Example:
+
+{
+    "id": 14,                                                   // number value
+    "firstName": "Mario",                                       // string value
+    "lastName": "Rossi",
+    "active": true,                                             // boolean value
+    "courses" : null,                                           // null value
+    "address" : {                                               // nested json object
+        "street" : "100 Main St",
+        "city" : "Philadelphia",
+        "state" : "Pennsylvania",
+        "zip" : "19103",
+        "country" : "USA"
+    },
+    "languages" : ["Java", "C#", "Python", "Javascript"]        // array value
+}
+
+Note: comments are not supported in json. Comments in above example are given for information purpose only.
+
+JSON data binding in java
+-------------------------
+JSON Data Binding with Jackson
+• Spring uses the Jackson Project behind the scenes
+• Jackson handles data binding between JSON and Java POJO
+• By default, Jackson will call appropriate getter/setter method in java POJO while binding data from json to java POJO (POJO: Plain old java object)
+
+maven dependency:
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.9.0</version>
+</dependency>
+
+example code for converting json data to java POJO
+-------------------------
+package com.luv2code.jackson.json.demo;
+
+import java.io.File;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+public class Driver {
+
+    public static void main(String[] args) {
+
+        try {
+            // create object mapper
+            ObjectMapper mapper = new ObjectMapper();
+
+            // read JSON  file and map/convert to Java POJO: 
+            // data/sample-lite.json
+            Student theStudent = mapper.readValue(
+                new File("data/sample-full.json"), Student.class);
+
+            // print first name and last name
+            System.out.println("First name = " + theStudent.getFirstName());
+            System.out.println("Last name = " + theStudent.getLastName());
+
+            // print out address: street and city
+            Address tempAddress = theStudent.getAddress();
+
+            System.out.println("Street = " + tempAddress.getStreet());
+            System.out.println("City = " + tempAddress.getCity());
+
+            // print out languages
+            for (String tempLang: theStudent.getLanguages()) {
+                System.out.println(tempLang);
+            }
+        } catch (Exception exc) {
+            exc.printStackTrace();
+        }
+    }
+}
+
+//Student.java
+package com.luv2code.jackson.json.demo;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+// "company" : "Acme Inc" present in json but not in POJO, so it will be ignored
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class Student {
+
+    private int id;
+    private String firstName;
+    private String lastName;
+    private boolean active;
+    private Address address;
+    private String[] languages;
+
+    public Student() { }
+
+    public int getId() {return id;}
+    public void setId(int id) {this.id = id;}
+    public String getFirstName() {return firstName;}
+    public void setFirstName(String firstName) { this.firstName = firstName; }
+    public String getLastName() { return lastName; }
+    public void setLastName(String lastName) { this.lastName = lastName; }
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
+    public Address getAddress() { return address; }
+    public void setAddress(Address address) { this.address = address; }
+    public String[] getLanguages() { return languages; }
+    public void setLanguages(String[] languages) { this.languages = languages; }
+}
+
+//Address.java
+package com.luv2code.jackson.json.demo;
+
+public class Address {
+    
+    private String street;
+    private String city;
+    private String state;
+    private String zip;
+    private String country;
+
+    public Address() {}
+
+    public String getStreet() { return street; }
+    public void setStreet(String street) { this.street = street; }
+    public String getCity() { return city; }
+    public void setCity(String city) { this.city = city; }
+    public String getState() { return state; }
+    public void setState(String state) { this.state = state; }
+    public String getZip() { return zip; }
+    public void setZip(String zip) { this.zip = zip; }
+    public String getCountry() { return country; }
+    public void setCountry(String country) { this.country = country; }
+}
+
+converting java POJO to JSON
+--------------------
+// create object mapper
+ObjectMapper mapper = new ObjectMapper();
+// read JSON from file and map/convert to Java POJO
+Student myStudent = mapper.readValue(new File("data/sample.json"), Student.class);
+
+// now write JSON to output file
+mapper.enable(SerializationFeature.INDENT_OUTPUT);
+mapper.writeValue(new File("data/output.json"), myStudent);
+
+spring framework jackson support
+----------------------
+
+• When building Spring REST applications
+• Spring will automatically handle Jackson Integration
+• JSON data being passed to REST controller is converted to POJO
+• Java object being returned from REST controller is converted to JSON
+
+All this happens automatically behind the scenes
+
+Spring REST http basics
+----------------------
+
+HTTP Method     CRUD Operation
+-------------------------------
+POST            Create a new entity
+GET             Read a list of entities or single entity
+PUT             Update an existing entity
+DELETE          Delete an existing entity
+
+MIME Content Types
+• The message format is described by MIME content type
+• Multipurpose Internet Mail-Extension
+• Basic Syntax: type/sub-type
+• Examples
+• text/html, text/plain
+• application/json, application/xml, …
+
+REST support in spring
+----------------------
+• Controllers can handle requests for all HTTP methods, including the four primary REST methods: GET, PUT, DELETE, PATCH and POST.
+• The @PathVariable annotation enables controllers to handle requests for parameterized URLs (URLs that have variable input as part of their path).
+• Resources can be represented in a variety of ways using Spring views and view resolvers, including View implementations for rendering model data as XML, JSON, Atom, and RSS.
+• The representation best suited for the client can be chosen using ContentNegotiatingViewResolver.
+• View-based rendering can be bypassed altogether using the @ResponseBody annotation and various HttpMethodConverter implementations.
+• Similarly, the @RequestBody annotation, along with HttpMethodConverter implementations, can convert inbound HTTP data into Java objects passed in to a controller’s handler methods.
+• Spring applications can consume REST resources using RestTemplate.
+
+
+Creating REST service using spring
+----------------------
+// hello world REST service
+
+package com.luv2code.springdemo.rest;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/test")
+public class DemoRestController {
+
+	// add code for the "/hello" endpoint
+	
+	@GetMapping("/hello")
+	public String sayHello() {
+		return "Hello World!";
+	}
+	
+}
+
+// REST service returning POJO
+// default value for parameter is specified if not provided
+// Since we are using plain controller here, we need to define ContentNegotiatingViewResolver, which is defined in later steps in relevant section
+
+package spittr.api;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import spittr.Spittle;
+import spittr.data.SpittleRepository;
+
+@Controller
+@RequestMapping("/spittles")
+public class SpittleController {
+    private static final String MAX_LONG_AS_STRING = "9223372036854775807";
+    private SpittleRepository spittleRepository;
+    
+    @Autowired
+    public SpittleController(SpittleRepository spittleRepository) {
+        this.spittleRepository = spittleRepository;
+    }
+    @RequestMapping(method = RequestMethod.GET)
+    public List < Spittle > spittles(
+        @RequestParam(value = "max", defaultValue = MAX_LONG_AS_STRING) long max,
+        @RequestParam(value = "count", defaultValue = "20") int count) {
+        return spittleRepository.findSpittles(max, count);
+    }
+}
+
+// RESTController service returning POJO response
+// global exception handlers return http 404 if student is not found or if path parameter is invalid
+package com.luv2code.springdemo.rest;
+
+import java.util.ArrayList;
+import java.util.List;
+import javax.annotation.PostConstruct;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.luv2code.springdemo.entity.Student;
+
+@RestController
+@RequestMapping("/api")
+public class StudentRestController {
+    
+    private List <Student> theStudents;
+    
+    // define @PostConstruct to load the student data ... only once!
+    @PostConstruct
+    public void loadData() {
+        theStudents = new ArrayList < > ();
+        theStudents.add(new Student("Poornima", "Patel"));
+        theStudents.add(new Student("Mario", "Rossi"));
+        theStudents.add(new Student("Mary", "Smith"));
+    }
+
+    // define endpoint for "/students" - return list of students
+    @GetMapping("/students")
+    public List < Student > getStudents() {
+        return theStudents;
+    }
+
+    // define endpoint for "/students/{studentId}" - return student at index
+    @GetMapping("/students/{studentId}")
+    public Student getStudent(@PathVariable int studentId) {
+        // just index into the list ... keep it simple for now
+        // check the studentId against list size
+        if ((studentId >= theStudents.size()) || (studentId < 0)) {
+            throw new StudentNotFoundException("Student id not found - " + studentId);
+        }
+        return theStudents.get(studentId);
+    }
+
+    //Can have @ExceptionHandler annotated methods here as well to have exception handling per class basis
+}
+
+// Controller advice for global exception handling
+package com.luv2code.springdemo.rest;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+
+@ControllerAdvice
+public class StudentRestExceptionHandler {
+
+    // add exception handling code here
+    // Add an exception handler using @ExceptionHandler
+    @ExceptionHandler
+    public ResponseEntity < StudentErrorResponse > handleException(StudentNotFoundException exc) {
+
+        // create a StudentErrorResponse
+        StudentErrorResponse error = new StudentErrorResponse();
+        error.setStatus(HttpStatus.NOT_FOUND.value());
+        error.setMessage(exc.getMessage());
+        error.setTimeStamp(System.currentTimeMillis());
+
+        // return ResponseEntity
+        return new ResponseEntity < > (error, HttpStatus.NOT_FOUND);
+    }
+
+    // add another exception handler ... to catch any exception (catch all)
+    @ExceptionHandler
+    public ResponseEntity < StudentErrorResponse > handleException(Exception exc) {
+
+        // create a StudentErrorResponse
+        StudentErrorResponse error = new StudentErrorResponse();
+        error.setStatus(HttpStatus.BAD_REQUEST.value());
+        error.setMessage(exc.getMessage());
+        error.setTimeStamp(System.currentTimeMillis());
+
+        // return ResponseEntity		
+        return new ResponseEntity < > (error, HttpStatus.BAD_REQUEST);
+    }
+}
+
+// Student is POJO with firstName and lastName string attribute
+package com.luv2code.springdemo.entity;
+
+public class Student {
+
+    private String firstName;
+    private String lastName;
+
+    public Student() { }
+
+    public Student(String firstName, String lastName) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+    }
+
+    public String getFirstName() { return firstName; }
+    public void setFirstName(String firstName) { this.firstName = firstName; }
+    public String getLastName() { return lastName; }
+    public void setLastName(String lastName) { this.lastName = lastName; }
+}
+
+//  student not found exception which just has message
+package com.luv2code.springdemo.rest;
+
+public class StudentNotFoundException extends RuntimeException {
+
+	public StudentNotFoundException(String message, Throwable cause) {
+		super(message, cause);
+	}
+
+	public StudentNotFoundException(String message) {
+		super(message);
+	}
+
+	public StudentNotFoundException(Throwable cause) {
+		super(cause);
+	}
+}
+
+// error response POJO
+
+package com.luv2code.springdemo.rest;
+public class StudentErrorResponse {
+
+    private int status;
+    private String message;
+    private long timeStamp;
+
+    public StudentErrorResponse() { }
+
+    public StudentErrorResponse(int status, String message, long timeStamp) {
+        this.status = status;
+        this.message = message;
+        this.timeStamp = timeStamp;
+    }
+
+    public int getStatus() { return status; }
+    public void setStatus(int status) { this.status = status; }
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+    public long getTimeStamp() { return timeStamp; }
+    public void setTimeStamp(long timeStamp) { this.timeStamp = timeStamp; }
+}
+
+
+spring content negotiating view resolver
+------------------------
+ContentNegotiatingViewResolver considers the Accept header and uses whatever media types it asks for,
+but only after it first looks at the URL’s file extension. If the URL has a file extension on the end,
+ContentNegotiatingViewResolver tries to figure out the desired type based on that extension.
+If the extension is .json, then the desired content type must be application/json.
+
+If the file extension doesn’t produce any usable clues for the media type, then the Accept header in the request is considered.
+In that case, the Accept header’s value indicates the MIME type(s) that the client wants.
+
+In the end, if there is no Accept header and the extension is no help,
+ContentNegotiatingViewResolver falls back to / as the default content type,
+meaning the client has to take whatever representation the server sends it.
+
+Things we can do by specifying ContentNegotiationManager
+• Specify a default content type to fall back to if a content type can’t be derived
+from the request.
+• Specify a content type via a request parameter.
+• Ignore the request’s Accept header.
+• Map request extensions to specific media types.
+• Use the Java Activation Framework (JAF) as a fallback option for looking up
+media types from extensions.
+
+There are three ways to configure a ContentNegotiationManager:
+• Directly declare a bean whose type is ContentNegotiationManager.
+• Create the bean indirectly via ContentNegotiationManagerFactoryBean.
+• Override the configureContentNegotiation() method of WebMvcConfigurerAdapter.
+
+// The easiest way to get a ContentNegotiationManager is to extend WebMvcConfigurerAdapter and override the configureContentNegotiation()
+
+@Override
+public void configureContentNegotiation(ContentNegotiationConfigurer configurer) {
+    configurer.defaultContentType(MediaType.APPLICATION_JSON);
+}
+
+@Bean
+public ViewResolver cnViewResolver(ContentNegotiationManager cnm) {
+    ContentNegotiatingViewResolver cnvr = new ContentNegotiatingViewResolver();
+    cnvr.setContentNegotiationManager(cnm);
+    return cnvr;
+}
+
+@Bean
+public ViewResolver beanNameViewResolver() {
+    return new BeanNameViewResolver();
+}
+
+@Bean
+public View spittles() {
+    return new MappingJackson2JsonView();
+}
+
+Disadvantages of ContentNegotiatingViewResolver:
+---------------------
+It has no say in what representations a controller can consume from the client. 
+If the client is sending JSON or XML, then ContentNegotiatingViewResolver isn’t much help.
+
+A gotcha associated with using ContentNegotiatingViewResolver. 
+The View chosen renders the model not the resource to the client. The model is a map of key-value pairs, the response looks more like this:
+{
+    "spittleList": [
+        {
+            "id": 42,
+            "latitude": 28.419489,
+            "longitude": -81.581184,
+            "message": "Hello World!",
+            "time": 1400389200000
+        }
+    ]
+}
+
+
+Spring http Message Converters
+---------------------
+Message conversion is a more direct way to transform data produced by a controller into a representation that's served to a client. When using message conversion,there is no model, and there is no view. There is only data produced by the controller and a resource representation produced when a message converter transforms that data.
+
+For example, if request's Accept header includes application/json and if Jackson JSON library is in the application’s classpath,
+then the object returned from the handler method is given to MappingJacksonHttpMessageConverter for conversion into a JSON representation
+if the request's Accept header includes text/xml,then Jaxb2RootElementHttpMessageConverter is tasked with producing an XML response to the client.
+
+For using message converters we need to add additional libraries to your application’s classpath to support them.
+MappingJacksonHttpMessageConverter requires "Jackson JSON Processor library"
+Jaxb2RootElementHttpMessageConverter requires "JAXB library" (org.glassfish.jaxb - jaxb-runtime)
+
+Below are some of the message converters
+-----------------------------------------------------------------------------
+Message converter                                       Description
+-----------------------------------------------------------------------------
+BufferedImageHttpMessageConverter                       Converts BufferedImage to and from image binary data.
+Jaxb2RootElementHttpMessageConverter                    Reads and writes XML (either text/xml or application/xml) to and from   JAXB2-annotated objects. Registered if JAXB v2 libraries are present on the classpath.
+MappingJacksonHttpMessageConverter                      Reads and writes JSON to and from typed objects or untyped HashMaps. Registered if the Jackson JSON library is present on the classpath.
+MappingJackson2HttpMessageConverter                     Reads and writes JSON to and from typed objects or untyped HashMaps. Registered if the Jackson 2 JSON library is present on the classpath.
+MarshallingHttpMessageConverter                         Reads and writes XML using an injected marshaler and unmarshaler. Supported (un)marshalers include Castor, JAXB2, JIBX, XMLBeans, and XStream.
+
+ResponseBody annotation
+-----------------------
+@ResponseBody annotation tells Spring that you want to send the returned object
+as a resource to the client, converted into some representational form that the client
+can accept. if the client’s Accept header specifies that the client will
+accept application/json, and if the Jackson JSON library is in the application’s classpath,
+then either MappingJacksonHttpMessageConverter or MappingJackson2HttpMessageConverter 
+will be chosen depending on which version of Jackson is in the classpath
+
+example:
+
+RequestMapping(method=RequestMethod.GET,produces="application/json")
+public @ResponseBody List<Spittle> spittles(@RequestParam(value="max",defaultValue=MAX_LONG_AS_STRING) long max,
+@RequestParam(value="count", defaultValue="20") int count) {
+    return spittleRepository.findSpittles(max, count);
+}
+
+RequestBody annotation
+-----------------------
+@RequestBody tells Spring to find a message converter to convert a
+resource representation coming from a client into an object.
+
+@RequestMapping has a consumes attribute set to application/json. 
+The consumes attribute works much like the produces attribute, only with
+regard to the request’s Content-Type header. This tells Spring that this method will
+only handle POST requests to /spittles if the request’s Content-Type header is
+application/json.
+
+@RequestMapping(method=RequestMethod.POST, consumes="application/json")
+@ResponseStatus(HttpStatus.CREATED)
+public @ResponseBody
+Spittle saveSpittle(@RequestBody Spittle spittle) {
+    return spittleRepository.save(spittle);
+}
+
+ResponseEntity annotation
+-----------------------
+ResponseEntity is a wrapper for HTTP response object.
+Controller methods can return a ResponseEntity, which is an object that carries metadata (such as headers and the status code) 
+about a response in addition to the object(response body) to be converted to a resource representation.
+
+Example 1:
+
+An exception handler can deal with the error cases, leaving the handler methods
+to focus on the happy path.
+
+//example code demonstrating usage of ResponseEntity
+//Error is a POJO with attributes code(int) and message(string)
+@RequestMapping(value="/{id}", method=RequestMethod.GET)
+public ResponseEntity<?> spittleById(@PathVariable long id) {
+    Spittle spittle = spittleRepository.findOne(id);
+    if (spittle == null) {
+        Error error = new Error(4, "Spittle [" + id + "] not found");
+        return new ResponseEntity<Error>(error, HttpStatus.NOT_FOUND);
+    }
+    return new ResponseEntity<Spittle>(spittle, HttpStatus.OK);
+}
+
+Example 2:
+
+using ResponseEntity to set any response header
+
+@RequestMapping(method=RequestMethod.POST,consumes="application/json")
+public ResponseEntity<Spittle> saveSpittle( @RequestBody Spittle spittle, UriComponentsBuilder ucb) {
+    Spittle spittle = spittleRepository.save(spittle);
+    HttpHeaders headers = new HttpHeaders();
+    URI locationUri = ucb.path("/spittles/")            // calculate the location URI
+    .path(String.valueOf(spittle.getId()))
+    .build()
+    .toUri();
+    headers.setLocation(locationUri);
+    ResponseEntity<Spittle> responseEntity = new ResponseEntity<Spittle>(spittle, headers, HttpStatus.CREATED);
+    return responseEntity;
+}
+
+ResponseStatus annotation
+-----------------------
+if we know that a controller method is always supposed to return same http response status, then we can use ResponseStatus annotation.
+
+For example, error handler method always returns an Error and always responds with an HTTP status code of 404 (Not Found)
+
+@ExceptionHandler(SpittleNotFoundException.class)
+@ResponseStatus(HttpStatus.NOT_FOUND)
+public @ResponseBody Error spittleNotFound(SpittleNotFoundException e) {
+    long spittleId = e.getSpittleId();
+    return new Error(4, "Spittle [" + spittleId + "] not found");
+}
+
+Annotations for supporting different HTTP methods ( GET , PUT , POST , PATCH , DELETE )
+--------------------------
+@RestController
+@RequestMapping("/api/v1")
+public class EmployeeController {
+    @Autowired
+    private EmployeeRepository employeeRepository;
+
+    @GetMapping("/employees")
+    public List < Employee > getAllEmployees() {
+        return employeeRepository.findAll();
+    }
+
+    @GetMapping("/employees/{id}")
+    public ResponseEntity < Employee > getEmployeeById(@PathVariable(value = "id") Long employeeId)
+    throws ResourceNotFoundException {
+        Employee employee = employeeRepository.findById(employeeId)
+            .orElseThrow(() - > new ResourceNotFoundException("Employee not found for this id :: " + employeeId));
+        return ResponseEntity.ok().body(employee);
+    }
+
+    @PostMapping(path = "/employees", 
+        consumes = MediaType.APPLICATION_JSON_VALUE, 
+        produces = MediaType.APPLICATION_JSON_VALUE)
+    public Employee createEmployee(@Valid @RequestBody Employee employee) {
+        return employeeRepository.save(employee);
+    }
+
+    @PutMapping("/employees/{id}")
+    public ResponseEntity < Employee > updateEmployee(@PathVariable(value = "id") Long employeeId,
+        @Valid @RequestBody Employee employeeDetails) throws ResourceNotFoundException {
+        Employee employee = employeeRepository.findById(employeeId)
+            .orElseThrow(() - > new ResourceNotFoundException("Employee not found for this id :: " + employeeId));
+
+        employee.setEmailId(employeeDetails.getEmailId());
+        employee.setLastName(employeeDetails.getLastName());
+        employee.setFirstName(employeeDetails.getFirstName());
+        final Employee updatedEmployee = employeeRepository.save(employee);
+        return ResponseEntity.ok(updatedEmployee);
+    }
+
+    @DeleteMapping("/employees/{id}")
+    public Map < String, Boolean > deleteEmployee(@PathVariable(value = "id") Long employeeId)
+    throws ResourceNotFoundException {
+        Employee employee = employeeRepository.findById(employeeId)
+            .orElseThrow(() - > new ResourceNotFoundException("Employee not found for this id :: " + employeeId));
+
+        employeeRepository.delete(employee);
+        Map < String, Boolean > response = new HashMap < > ();
+        response.put("deleted", Boolean.TRUE);
+        return response;
+    }
+
+    @PatchMapping("/employees/{id}/{firstName}")
+    public ResponseEntity < Employee > updateEmployeePartially(@PathVariable Long id, @PathVariable String firstName) {
+        try {
+            Employee employee = employeeRepository.findById(id).get();
+            employee.setFirstName(firstName);
+            return new ResponseEntity < Employee > (employeeRepository.save(employee), HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity < > (HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+}
+
+REST end point which can return both json and xml response
+------------------------
+@Controller
+@RequestMapping(path = "/", produces = MediaType.APPLICATION_JSON_VALUE)
+public class HomeController 
+{
+    @PostMapping(path = "/members")
+    public void addMember_V1(@RequestBody Member member) {
+        //code
+    }
+ 
+    @PostMapping(path = "/members", produces = MediaType.APPLICATION_XML_VALUE)
+    public void addMember_V2(@RequestBody Member member) {
+        //code
+    }
+}
+
+How RESTController and PostMapping annotations are defined
+------------------------
+@Target({ java.lang.annotation.ElementType.METHOD })
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@RequestMapping(method = { RequestMethod.POST })
+public @interface PostMapping 
+{
+    //code
+}
+
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Controller
+@ResponseBody
+public @interface RestController {
+    
+	@AliasFor(annotation = Controller.class)
+	String value() default "";
+
+}
+
+Consuming REST resources using spring RESTTemplate
+----------------------------------------------
+Method              Description
+----------------------------------------------
+delete()            Performs an HTTP DELETE request on a resource at a specified URL
+exchange()          Executes a specified HTTP method against a URL, returning a ResponseEntity containing an object mapped from the response body
+execute()           Executes a specified HTTP method against a URL, returning an object mapped from the response body
+getForEntity()      Sends an HTTP GET request, returning a ResponseEntity containing an object mapped from the response body
+getForObject()      Sends an HTTP GET request, returning an object mapped from a response body
+headForHeaders()    Sends an HTTP HEAD request, returning the HTTP headers for the specified resource URL
+optionsForAllow()   Sends an HTTP OPTIONS request, returning the Allow header for the specified URL
+postForEntity()     POSTs data to a URL, returning a ResponseEntity containing an object mapped from the response body
+postForLocation()   POSTs data to a URL, returning the URL of the newly created resource
+postForObject()     POSTs data to a URL, returning an object mapped from the response body
+put()               PUTs resource data to the specified URL
+
+
+Most of the operations above are overloaded into three method forms:
+• One that takes a java.net.URI as the URL specification with no support for parameterized URLs
+• One that takes a String URL specification with URL parameters specified as a Map
+• One that takes a String URL specification with URL parameters specified as a variable argument list
+
+Example:
+<T> T getForObject(URI url, Class<T> responseType) throws RestClientException;
+<T> T getForObject(String url, Class<T> responseType, Object... uriVariables) throws RestClientException;
+<T> T getForObject(String url, Class<T> responseType, Map<String, ?> uriVariables) throws RestClientException;
+
+Performing GET operations
+-----------------------
+GET operation can be performed using getForObject or getForEntity. 
+getForObject just returns java object created by mapping json from response body whereas 
+getForEntity returns ResponseEntity from which you can retrieve value of response headers (response metadata)
+Using ResponseEntity.getHeaders() you can get AcceptCharset, ContentType, Expires, Etag, Location , LastModified etc
+ResponseEntity.getStatusCode() returns HTTP response status
+
+<T> T getForObject(URI url, Class<T> responseType) throws RestClientException;
+<T> T getForObject(String url, Class<T> responseType, Object... uriVariables) throws RestClientException;
+<T> T getForObject(String url, Class<T> responseType, Map<String, ?> uriVariables) throws RestClientException;
+
+Similarly, the signatures of the getForEntity() methods are as follows:
+<T> ResponseEntity<T> getForEntity(URI url, Class<T> responseType) throws RestClientException;
+<T> ResponseEntity<T> getForEntity(String url, Class<T> responseType, Object... uriVariables) throws RestClientException;
+<T> ResponseEntity<T> getForEntity(String url, Class<T> responseType, Map<String, ?> uriVariables) throws RestClientException;
+
+getForObject examples:
+
+public Profile fetchFacebookProfile(String id) {
+    RestTemplate rest = new RestTemplate();
+    return rest.getForObject("http://graph.facebook.com/{spitter}", Profile.class, id);
+}
+
+public Spittle[] fetchFacebookProfile(String id) {
+    Map<String, String> urlVariables = new HashMap<String, String();
+    urlVariables.put("id", id);
+    RestTemplate rest = new RestTemplate();
+    return rest.getForObject("http://graph.facebook.com/{spitter}", Profile.class, urlVariables);
+}
+
+getForEntity example
+
+public Spittle fetchSpittle(long id) {
+    RestTemplate rest = new RestTemplate();
+    ResponseEntity<Spittle> response = rest.getForEntity("http://localhost:8080/spittr-api/spittles/{id}", 
+    Spittle.class, id);
+    if(response.getStatusCode() == HttpStatus.NOT_MODIFIED) {
+        throw new NotModifiedException();
+    }
+    return response.getBody();
+}
+
+PUT resources
+-----------------------
+void put(URI url, Object request) throws RestClientException;
+void put(String url, Object request, Object... uriVariables) throws RestClientException;
+void put(String url, Object request, Map<String, ?> uriVariables) throws RestClientException;
+
+Example code:
+public void updateSpittle(Spittle spittle) throws SpitterException {
+    RestTemplate rest = new RestTemplate();
+    String url = "http://localhost:8080/spittr-api/spittles/"
+    + spittle.getId();
+    rest.put(URI.create(url), spittle);
+}
+
+When you use a Map to send the template variables, the key of each entry in the Map
+corresponds to the placeholder variable of the same name in the URI template.
+
+// using map to pass params
+public void updateSpittle(Spittle spittle) throws SpitterException {
+    RestTemplate rest = new RestTemplate();
+    Map<String, String> params = new HashMap<String, String>();
+    params.put("id", spittle.getId());
+    rest.put("http://localhost:8080/spittr-api/spittles/{id}",spittle, params);
+}
+
+DELETE resources
+-----------------------
+void delete(String url, Object... uriVariables) throws RestClientException;
+void delete(String url, Map<String, ?> uriVariables) throws RestClientException;
+void delete(URI url) throws RestClientException;
+
+public void deleteSpittle(long id) {
+    RestTemplate rest = new RestTemplate();
+    rest.delete(URI.create("http://localhost:8080/spittr-api/spittles/" + id));
+}
+
+// pass params using map
+public void deleteSpittle(long id) {
+    RestTemplate rest = new RestTemplate();
+    rest.delete("http://localhost:8080/spittr-api/spittles/{id}", id));
+}
+
+POST resource
+-----------------------
+The postForObject() and postForEntity() methods work with POST requests in a way that's similar to how 
+getForObject() and getForEntity() work for sending GET requests.
+
+<T> T postForObject(URI url, Object request, Class<T> responseType) throws RestClientException;
+<T> T postForObject(String url, Object request, Class<T> responseType, Object... uriVariables) throws RestClientException;
+<T> T postForObject(String url, Object request, Class<T> responseType, Map<String, ?> uriVariables) throws RestClientException;
+
+Example:
+public Spitter postSpitterForObject(Spitter spitter) {
+    RestTemplate rest = new RestTemplate();
+    return rest.postForObject("http://localhost:8080/spittr-api/spitters",spitter, Spitter.class);
+}
+
+
+Methods which get response along with headers:
+
+<T> ResponseEntity<T> postForEntity(URI url, Object request, Class<T> responseType) throws RestClientException;
+<T> ResponseEntity<T> postForEntity(String url, Object request, Class<T> responseType, Object... uriVariables) throws RestClientException;
+<T> ResponseEntity<T> postForEntity(String url, Object request, Class<T> responseType, Map<String, ?> uriVariables) throws RestClientException;
+
+Example:
+RestTemplate rest = new RestTemplate();
+ResponseEntity<Spitter> response = rest.postForEntity("http://localhost:8080/spittr-api/spitters",spitter, Spitter.class);
+Spitter spitter = response.getBody();
+URI url = response.getHeaders().getLocation();
+
+postForLocation() sends a resource to the server in the body of a POST request.
+But instead of responding with that same resource object, postForLocation() 
+responds with the location of the newly created resource.
+
+Example:
+public String postSpitter(Spitter spitter) {
+    RestTemplate rest = new RestTemplate();
+    return rest.postForLocation("http://localhost:8080/spittr-api/spitters", spitter).toString();
+}
+
+Exchange method
+-----------------------
+Takes http method as parameter
+RestTemplate’s exchange() method are used when we want to set headers on the request sent to the server
+
+<T> ResponseEntity<T> exchange(URI url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType) throws RestClientException;
+<T> ResponseEntity<T> exchange(String url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType, Object... uriVariables) throws RestClientException;
+<T> ResponseEntity<T> exchange(String url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType, Map<String, ?> uriVariables) throws RestClientException;
+
+Example:
+// GET resource by specifying request headers using exchange method
+// If not setting request headers, then you can pass null for requestEntity param
+
+MultiValueMap<String, String> headers = new LinkedMultiValueMap<String, String>();
+headers.add("Accept", "application/json");
+HttpEntity<Object> requestEntity = new HttpEntity<Object>(headers);
+ResponseEntity<Spitter> response = rest.exchange(
+"http://localhost:8080/spittr-api/spitters/{spitter}",HttpMethod.GET, requestEntity, Spitter.class, spitterId);
+Spitter spitter = response.getBody();
+
+swagger openapi documentation
+----------------------
+https://www.udemy.com/course/spring-framework-5-beginner-to-guru/learn/lecture/8903672

@@ -1,0 +1,309 @@
+Thymeleaf -> for displaying model attributes, looping, local variables, selection variable, 
+form with command object, conditional statements, message from property file for internationalization
+refer:
+https://stackabuse.com/getting-started-with-thymeleaf-in-java-and-spring/
+archive link:
+https://web.archive.org/web/2/https://stackabuse.com/getting-started-with-thymeleaf-in-java-and-spring/
+
+Expression utility objects:
+https://www.baeldung.com/spring-thymeleaf-3-expressions
+
+Using parameters in messages on properties file:
+https://www.thymeleaf.org/doc/tutorials/2.1/usingthymeleaf.html#messages
+home.welcome=¡Bienvenido a nuestra tienda de comestibles, {0}!
+
+<p th:utext="#{home.welcome(${session.user.name})}">
+  Welcome to our grocery store, Sebastian Pepper!
+</p>
+
+This standard message resolver expects to find messages for /WEB-INF/templates/home.html in .properties files in the same folder and with the same name as the template, like:
+
+/WEB-INF/templates/home_en.properties for English texts.
+/WEB-INF/templates/home_es.properties for Spanish language texts.
+/WEB-INF/templates/home_pt_BR.properties for Portuguese (Brazil) language texts.
+/WEB-INF/templates/home.properties for default texts (if locale is not matched).
+
+
+helloworld thymeleaf html page:
+---------------------
+helloword.html:
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head> </head>
+<body>
+ <p th:text="'Time on the server is ' + ${theDate}" />
+</body>
+</html>
+
+Referencing resource files from server in thymeleaf page
+---------------------
+<!-- bootstrap css file placed in /src/main/resources/css -->
+<head>
+… …
+
+<!-- reference CSS file -->
+<link rel="stylesheet" th:href="@{/css/bootstrap.min.css}" />
+
+</head>
+
+Referencing remote files
+---------------------
+<link rel="stylesheet"
+href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" />
+
+Listing objects controller code
+------------------------------------------
+@Controller
+@RequestMapping("/employees")
+public class EmployeeController {
+
+	private EmployeeService employeeService;
+	
+	public EmployeeController(EmployeeService theEmployeeService) {
+		employeeService = theEmployeeService;
+	}
+	
+	// add mapping for "/list"
+	@GetMapping("/list")
+	public String listEmployees(Model theModel) {
+		
+		// get employees from db
+		List<Employee> theEmployees = employeeService.findAll();
+		
+		// add to the spring model
+		theModel.addAttribute("employees", theEmployees);
+		
+		return "list-employees";
+	}
+}
+
+Bootstrap css full page with thymeleaf html table for listing objects
+---------------------------------------------------------------
+<!DOCTYPE HTML>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS" crossorigin="anonymous">
+	<title>Employee Directory</title>
+</head>
+<body>
+<div class="container">
+	<h3>Employee Directory</h3>
+	<hr>
+	<table class="table table-bordered table-striped">
+		<thead class="thead-dark">
+			<tr>
+				<th>First Name</th>
+				<th>Last Name</th>
+				<th>Email</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr th:each="tempEmployee : ${employees}">
+				<td th:text="${tempEmployee.firstName}" />	
+				<td th:text="${tempEmployee.lastName}" />	
+				<td th:text="${tempEmployee.email}" />	
+			</tr>
+		</tbody>		
+	</table>
+</div>
+</body>
+</html>
+
+redirecting to URL from index page
+---------------------
+<meta http-equiv="refresh" 
+	  content="0; URL='employees/list'">
+
+form submission in thymeleaf - add employee
+---------------------
+• Add Employee button will href link to
+  • request mapping /employees/showFormForAdd
+
+<a th:href="@{/employees/showFormForAdd}">
+ Add Employee
+</a>
+<a th:href="@{/employees/showFormForAdd}"
+ class="btn btn-primary btn-sm mb-3">
+ <!-- 
+ button bootstrap style for the following things
+ Button
+ Button Primary
+ Button Small
+ Margin Bottom, 3 pixels 
+ -->
+ Add Employee
+</a>
+
+Controller code for showing the form:
+---------------------
+@Controller
+@RequestMapping("/employees")
+public class EmployeeController {
+  @GetMapping("/showFormForAdd")
+  public String showFormForAdd(Model theModel) {
+    // create model attribute to bind form data
+    Employee theEmployee = new Employee();
+    //Thymleaf template will access below data for binding form data
+    theModel.addAttribute("employee", theEmployee);
+    return "employees/employee-form";
+  }
+  …
+}
+
+Expression     Description
+------------------------------------------
+th:action      Location to send form data
+th:object      Reference to model attribute
+th:field       Bind input field to a property on model attribute
+
+thymeleaf HTML form for adding new employee
+------------------------------------------
+When form is loaded, getter methods will be called:
+employee.getFirstName()
+employee.getLastName() etc
+When form is submitted, setter methods for the object will be called.
+
+<!-- employee is the model attribute that is referred which we added in above controller -->
+<form action="#" th:action="@{/employees/save}"
+ th:object="${employee}" method="POST">
+<!-- 
+bootstrap styles in form for the following
+form-control    Form control
+mb-4            Margin Bottom, 4 pixels
+col-4           Column Span 4
+-->
+<!-- *{firstName} selects property from th:object -->
+<input type="text" th:field="*{firstName}" placeholder="First name"
+ class="form-control mb-4 col-4">
+
+<input type="text" th:field="*{lastName}" placeholder="Last name"
+ class="form-control mb-4 col-4">
+
+<input type="text" th:field="*{email}" placeholder="Email"
+ class="form-control mb-4 col-4">
+
+<!-- 
+bootstrap styles in button for the following
+btn        Button
+btn-info   Button Info
+col-2      Column Span 2
+ -->
+<button type="submit" class="btn btn-info col-2">Save</button>
+
+</form>
+
+code to process form data
+--------------------------
+@Controller
+@RequestMapping("/employees")
+public class EmployeeController {
+  
+  private EmployeeService employeeService;
+
+  public EmployeeController(EmployeeService theEmployeeService) {
+    employeeService = theEmployeeService;
+  }
+
+  @PostMapping("/save")
+  public String saveEmployee(@ModelAttribute("employee") Employee theEmployee) {
+    // save the employee
+    employeeService.save(theEmployee);
+    // use a redirect to prevent duplicate submissions
+    return "redirect:/employees/list";
+  }
+  …
+}
+
+update object button - eg - update employee
+----------------------------------------------------
+<tr th:each="tempEmployee : ${employees}">
+…
+<td>
+<!-- Appends to URL ?employeeId=xxx -->
+ <a th:href="@{/employees/showFormForUpdate(employeeId=${tempEmployee.id})}"
+ class="btn btn-info btn-sm">
+ Update
+ </a>
+</td>
+</tr>
+
+controller code
+--------------------------
+@Controller
+@RequestMapping("/employees")
+public class EmployeeController {
+  // other methods for add, delete etc …
+  @GetMapping("/showFormForUpdate")
+  // request param employeeId passed from above thymeleaf page
+  public String showFormForUpdate(@RequestParam("employeeId") int theId, Model theModel) {
+    // get the employee from the service
+    Employee theEmployee = employeeService.findById(theId);
+    // set employee as a model attribute to pre-populate the form
+    theModel.addAttribute("employee", theEmployee);
+    // send over to our form
+    return "employees/employee-form";
+  }
+}
+
+HTML form for updating object
+-----------------------------
+<form action="#" th:action="@{/employees/save}"
+ th:object="${employee}" method="POST">
+
+ <!--
+ Add hidden form field for id to handle update
+ this is because the employee object is in request scope any employee attribute which is not in the form will not 
+ have its value set in the employee object that is passed to update method in controller
+ OR else make the model attribute as session attribute
+  -->
+ <input type="hidden" th:field="*{id}" />
+
+ <input type="text" th:field="*{firstName}"
+ class="form-control mb-4 col-4" placeholder="First name">
+ <input type="text" th:field="*{lastName}"
+ class="form-control mb-4 col-4" placeholder="Last name">
+ <input type="text" th:field="*{email}"
+ class="form-control mb-4 col-4" placeholder="Email">
+
+ <button type="submit" class="btn btn-info col-2">Save</button>
+
+ </form>
+
+Deleting object - eg - delete employee HTML button
+----------------------------------------------------------
+<tr th:each="tempEmployee : ${employees}">
+<!-- other tags for data and update button -->
+  <td>
+    <!-- th:href Appends to URL ?employeeId=xxx-->
+    <!-- onclick has javascript code to prompt user for confirmation before delete -->
+    <a th:href="@{/employees/delete(employeeId=${tempEmployee.id})}"
+    class="btn btn-danger btn-sm"
+    onclick="if (!(confirm('Are you sure you want to delete this employee?'))) return false">
+    Delete
+    </a>
+  </td>
+</tr>
+
+controller code for delete
+
+@Controller
+@RequestMapping("/employees")
+public class EmployeeController {
+  // other methods for update, get etc
+  
+  @GetMapping("/delete")
+  public String delete(@RequestParam("employeeId") int theId) {
+    // delete the employee
+    employeeService.deleteById(theId);
+    // redirect to /employees/list
+    return "redirect:/employees/list";
+  }
+}
+
+thymeleaf security 
+-----------------
+already documented in spring notes spreadsheet under key "spring security usage in thymeleaf"

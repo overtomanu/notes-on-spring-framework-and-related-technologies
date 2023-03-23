@@ -1,0 +1,1756 @@
+spring boot notes
+-----------------
+Note: Some points about spring boot are updated in below google sheet
+https://docs.google.com/document/d/1_pbt1DNs77yPFafAgM3jUd8oyGnUoP5Lmw3rGvq_ymg/edit#
+
+Spring boot applicaion directory structure
+-------------------------------
+src
+    pom.xml             (maven build xml or maybe use gradle)
+    main
+        java            (Java source code)
+        resources       (Properties / config files used by the application)
+            static      (by default, spring boot will load static resources from this directory)
+            templates   (spring boot will load templates from this directory. eg: thymeleaf, freemarker and mustache)
+    test
+        java            (Unit testing source code)
+
+Spring boot starters
+--------------------
+spring-boot-starter                         Core starter, including auto-configuration support, logging and YAML
+spring-boot-starter-web                     Building web apps, includes validation, REST.Uses Tomcat as default embedded server
+spring-boot-starter-security                Adding Spring Security support
+spring-boot-starter-data-jpa                Spring database support with JPA and Hibernate
+spring-boot-starter-data-rest               Starter for exposing Spring Data repositories over REST using Spring Data REST
+spring-boot-starter-data-jdbc               Starter for using Spring Data JDBC
+spring-boot-starter-thymeleaf               Starter for building MVC web applications using Thymeleaf views
+spring-boot-starter-freemarker              Starter for building MVC web applications using FreeMarker views
+spring-boot-starter-actuator                Starter for using Spring Boot's Actuator which provides production ready features to help you monitor and manage your application
+spring-boot-starter-webflux                 Starter for building WebFlux applications using Spring Framework's Reactive Web support
+spring-boot-starter-batch                   Starter for using Spring Batch
+spring-boot-starter-data-mongodb-reactive   Starter for using MongoDB document-oriented database and Spring Data MongoDB Reactive
+spring-boot-starter-data-neo4j              Starter for using Neo4j graph database and Spring Data Neo4j
+spring-boot-starter-web-services            Starter for using Spring Web SOAP Services
+
+Spring boot environment / properties
+-------------------------------
+The Spring environment abstraction is a one-stop shop for any configurable property. It abstracts the origins of properties so that beans needing those properties can consume them from Spring itself. The Spring environment pulls from several property sources, including
+- JVM system properties
+- Operating system environment variables
+- Command-line arguments
+- Application property configuration files
+
+Properties are considered in the following order
+---------------------------------
+01 Devtools global settings properties on your home directory (~/.spring-boot-devtools.properties when devtools is active).
+
+02 @TestPropertySource annotations on your tests.
+03 properties attribute on your tests. Available on @SpringBootTest and the test annotations for testing a particular slice of your application.
+
+04 Command line arguments.
+05 Properties from SPRING_APPLICATION_JSON (inline JSON embedded in an environment variable or system property).
+06 ServletConfig init parameters.
+07 ServletContext init parameters.
+08 JNDI attributes from java:comp/env.
+09 Java System properties (System.getProperties()).
+10 OS environment variables.
+11 A RandomValuePropertySource that has properties only in random.*.
+12 Profile-specific application properties outside of your packaged jar (application-{profile}.properties and YAML variants).
+
+13 Profile-specific application properties packaged inside your jar (application-{profile}.properties and YAML variants).
+
+14 Application properties outside of your packaged jar (application.properties and YAML variants).
+15 Application properties packaged inside your jar (application.properties and YAML variants).
+16 @PropertySource annotations on your @Configuration classes. Please note that such property sources are not added to the Environment until the application context is being refreshed. This is too late to configure certain properties such as logging.* and spring.main.* which are read before refresh begins.
+
+17 Default properties (specified by setting SpringApplication.setDefaultProperties).
+
+SpringApplication loads properties from application.properties files in the following locations and adds them to the Spring Environment:
+---------------------------------
+1 A /config subdirectory of the current directory
+2 The current directory
+3 A classpath /config package
+4 The classpath root
+
+The list is ordered by precedence (properties defined in locations higher in the list override those defined in lower locations).
+
+spring boot relaxed rules for binding Environment properties
+------------------------------------------------------------
+acme.my-project.person.first-name   | Kebab case, which is recommended for use in .properties and .yml files.
+acme.myProject.person.firstName     | Standard camel case syntax.
+acme.my_project.person.first_name   | Underscore notation, which is an alternative format for use in .properties and .yml files.
+ACME_MYPROJECT_PERSON_FIRSTNAME     | Upper case format, which is recommended when using system environment variables.
+
+spring boot overriding properties from command line
+---------------------------------
+java -jar springbootapp_v1.jar --acme.my-project.person.first-name=nameForCommandline -acme.my-project.person.last-name=lnameFrmCmdline
+
+spring boot John's Pragmatic Guide
+---------------------------------
+• Favor using application.properties or application.yml in packaged JAR (or WAR)
+• Use profile specific properties or YAML files for profile specific properties
+• For deployments, override properties that change with environment variables
+• Typically 70-80% of values do not change, only override what is needed
+• Environment variables offer a secure way of setting sensitive values such as password
+
+spring boot cloud config
+---------------------------------
+• Spring Cloud Config allows Spring applications to obtain configuration from a configuration
+server
+• Application starts up and obtains configuration values from a configuration server
+• Bootstrap process runs before normal Spring startup
+
+spring boot specifying property in different formats
+---------------------------------
+example:
+#in .properties file
+server.port=9090
+
+#in yaml/yml file
+server:
+    port: 9090
+
+#as operating system variable
+#the naming style is slightly different to accommodate restrictions placed on environment variable names by the 
+#operating system. Spring is capable of handling it and interpret's SERVER_PORT as server.port
+export SERVER_PORT=9090
+
+#set a property named greeting.welcome to echo the value of another property named spring.application.name
+#To achieve this, you could use the ${} placeholder markers
+greeting:
+    welcome: ${spring.application.name}
+
+spring boot Using @ConfigurationProperties annotation
+-----------------------------------------
+# When @ConfigurationProperties annotation is placed on any Spring bean, it specifies that the properties of that 
+# bean can be injected from properties in the Spring environment.
+@Controller
+@RequestMapping("/orders")
+@SessionAttributes("order")
+@ConfigurationProperties(prefix="taco.orders")
+public class OrderController {
+    private int pageSize = 20;
+    public void setPageSize(int pageSize) {
+        this.pageSize = pageSize;
+    }
+    
+    // other methods ...
+  @GetMapping
+  public String ordersForUser(@AuthenticationPrincipal User user, Model model) {
+    Pageable pageable = PageRequest.of(0, pageSize);
+    model.addAttribute("orders",
+        orderRepo.findByUserOrderByPlacedAtDesc(user, pageable));
+    return "orderList";
+    }
+}
+
+# you could set this property in application.yml like this:
+taco:
+  orders:
+    pageSize: 10
+
+spring boot Defining configuration properties holders
+-----------------------------------------
+@ConfigurationProperties are in fact often placed on beans whose sole purpose in the application is to be holders 
+of configuration data. This keeps configuration-specific details out of the controllers and other application 
+classes. It also makes it easy to share common configuration properties among several beans that may make use of 
+that information.
+
+package tacos.web;
+import javax.validation.constraints.Max; import javax.validation.constraints.Min;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
+import lombok.Data;
+
+@Component 
+@ConfigurationProperties(prefix="taco.orders") 
+@Data
+@Validated
+public class OrderProps {
+  @Min(value=5, message="must be between 5 and 25")
+  @Max(value=25, message="must be between 5 and 25")
+  private int pageSize = 20;
+}
+
+// using order props configuration holder in other beans
+@Controller
+@RequestMapping("/orders")
+@SessionAttributes("order")
+public class OrderController {
+    private OrderRepository orderRepo;
+    private OrderProps props;
+    public OrderController(OrderRepository orderRepo, OrderProps props) {
+        this.orderRepo = orderRepo;
+        this.props = props; 
+    }
+    // other methods ...
+    @GetMapping
+    public String ordersForUser(@AuthenticationPrincipal User user, Model model) {
+        Pageable pageable = PageRequest.of(0, props.getPageSize());
+        model.addAttribute("orders",
+            orderRepo.findByUserOrderByPlacedAtDesc(user, pageable));
+        return "orderList";
+    }
+}
+
+Spring boot using constructor binding for configuration properties
+-----------------------------------------
+// Note: fields have no setter methods and are immutable
+// here property values for username, password etc are injected in constructor
+// we can also use @PropertySource annotation to consider property values from given properties file
+@ConstructorBinding
+@ConfigurationProperties("guru")
+public class SfgConstructorConfig {
+    private final String username;
+    private final String password;
+    private final String jdbcurl;
+
+    public SfgConstructorConfig(String username, String password, String jdbcurl) {
+        this.username = username; this.password = password; this.jdbcurl = jdbcurl;
+    }
+
+    public String getUsername() { return username; }
+    public String getPassword() { return password; }
+    public String getJdbcurl() { return jdbcurl; }
+}
+
+@EnableConfigurationProperties(SfgConstructorConfig.class)
+@ImportResource("classpath:sfgdi-config.xml")
+@Configuration
+public class GreetingServiceConfig {
+
+    @Bean
+    FakeDataSource fakeDataSource(SfgConstructorConfig sfgConstructorConfig){
+        FakeDataSource fakeDataSource = new FakeDataSource();
+        fakeDataSource.setUsername(sfgConstructorConfig.getUsername());
+        fakeDataSource.setPassword(sfgConstructorConfig.getPassword());
+        fakeDataSource.setJdbcurl(sfgConstructorConfig.getJdbcurl());
+        return fakeDataSource;
+    }
+    // other methods
+}
+
+
+spring boot Declaring configuration property metadata
+-----------------------------------------
+To create metadata for your custom configuration properties, 
+you’ll need to create a file under the META-INF (for example, in the project under src/main/resources/ META-INF) 
+named additional-spring-configuration-metadata.json. 
+
+The metadata can be useful for providing some minimal documentation around the configuration properties, especially in the IDE.
+
+For the taco.orders.pageSize property, you can set up the metadata with the following JSON:
+Note: Spring Boot’s flexible property naming is flexible.
+It allows for variations in property names such that taco.orders.page-size is equivalent to taco.orders.pageSize.
+
+{
+    "properties": [
+        {
+            "name": "taco.orders.page-size",
+            "type": "java.lang.String",
+            "description": "Sets the maximum number of orders to display in a list."
+        }
+    ]
+}
+
+spring boot Configuring with profiles
+-----------------------------------------
+Profiles are a type of conditional configuration where different beans, configuration classes, 
+and configuration properties are applied or ignored based on what profiles are active at runtime.
+One way to define profile-specific properties is to create yet another YAML or properties file containing only the 
+properties for profile.
+
+The name of the file should follow this convention: 
+application-{profile name}.yml OR application-{profile name}.properties
+
+Another way to specify profile-specific properties works only with YAML configuration. 
+It involves placing profile-specific properties alongside non-profiled properties in application.yml, 
+separated by three hyphens and the spring.profiles property to name the profile.
+Example:
+
+logging:
+  level:
+    tacos: DEBUG
+
+---
+spring:
+  profiles: prod
+  datasource:
+    url: jdbc:mysql://localhost/tacocloud
+    username: tacouser
+    password: tacopassword
+logging:
+  level:
+    tacos: WARN
+
+spring boot Activating profiles:
+-----------------------------------------
+in application.yml
+
+spring:
+  profiles:
+    active:
+    - prod 
+    - audit 
+    - ha
+
+via environment variable
+export SPRING_PROFILES_ACTIVE=prod,audit,ha
+
+via command-line argument
+java -jar taco-cloud.jar --spring.profiles.active=prod
+
+spring boot conditionally creating beans based on active profiles
+-----------------------------------------
+@Bean
+@Profile({"dev", "qa"})
+//activate bean when prod profile is not active
+//@Profile("!prod")
+//activate bean when neither prod profile nor qa profile is active
+//@Profile({"!prod", "!qa"})
+public CommandLineRunner dataLoader(IngredientRepository repo,
+    //methods ...
+}
+
+Spring boot important application properties
+-----------------------------------------
+#setting log level for package
+#package name is specified under logging.level
+logging.level.com.luv2code=INFO
+
+#setting log file name
+logging.file=MyApp.log
+#other logging properties
+#set root logging level to WARN but log spring security logs at DEBUG level
+logging:
+    path: /var/logs/
+    file: TacoCloud.log
+    level:
+        root: WARN
+        org.springframework.security: DEBUG
+
+#HTTP server port
+server.port=7070
+
+#Context path of the application
+server.servlet.context-path=/my-first-app
+
+#Default HTTP session timeout
+#Default timeout is 30m
+server.servlet.session.timeout=15m
+
+#Setting the property value to true means that all the beans in the application will use lazy initialization.
+spring.main.lazy-initialization=true
+
+#Actuator endpoints
+#Endpoints to include by name or wildcard
+management.endpoints.web.exposure.include=*
+
+#Endpoints to exclude by name or wildcard
+management.endpoints.web.exposure.exclude=beans,mapping
+
+#actuator info
+info.app.name=My Super Cool App
+info.app.description=A crazy and fun app, yoohoo!
+info.app.version=1.0.0
+
+#Base path for actuator endpoints
+management.endpoints.web.base-path=/actuator
+
+#Spring security
+#Default username
+spring.security.user.name=admin
+
+#Password for default user
+spring.security.user.password=topsecret
+
+#Spring data
+#JDBC URL of the database
+spring.datasource.url=jdbc:mysql://localhost:3306/ecommerce
+
+#Login username and password of the database
+spring.datasource.username=scott
+spring.datasource.password=tiger
+
+#in yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost/tacocloud
+    username: tacodb
+    password: tacopassword
+    driver-class-name: com.mysql.jdbc.Driver
+
+#specifying datasource from JNDI lookup
+spring:
+  datasource:
+jndi-name: java:/comp/env/jdbc/tacoCloudDS
+
+#embedded server ssl configuration
+server:
+  port: 8443
+  ssl:
+    key-store: file:///path/to/mykeys.jks
+    key-store-password: letmein
+    key-password: letmein
+
+
+#specifying the database initialization scripts to run when the application starts
+
+spring:
+  datasource:
+schema:
+- order-schema.sql
+- ingredient-schema.sql - taco-schema.sql
+- user-schema.sql
+data:
+- ingredients.sql
+
+# enable h2 in-memory database console
+# available at /h2-console
+spring.h2.console.enabled=true
+
+spring boot @SpringBootApplication annotation for auto configuration
+--------------------------
+@SpringBootApplication is composed of the following annotations:
+
+@EnableAutoConfiguration        Enables Spring Boot's auto-configuration support
+@ComponentScan                  Enables component scanning of current package. Also recursively scans sub-packages
+@Configuration                  Able to register extra beans with @Bean or import other configuration classes
+
+Explicitly specifying third party packages for component scanning
+@SpringBootApplication(
+    scanBasePackages={"com.luv2code.springboot.demo.mycoolapp",
+    "org.acme.iot.utils",
+    "edu.cmu.wean"})
+
+Spring boot REST
+-----------------------------------------
+To expose REST endpoints in spring boot, it is enough to declare JpaRepository and add following dependency
+org.springframework.boot
+spring-boot-starter-data-rest
+
+Spring Data REST - How Does It Work?
+• Spring Data REST will scan your project for JpaRepository
+• Expose REST APIs by creating JpaRepository for your entity type
+public interface EmployeeRepository extends JpaRepository<Employee, Integer> {
+}
+
+• By default, Spring Data REST will create endpoints based on entity type
+• Simple pluralized form
+• First character of Entity type is lowercase
+• Then just adds an "s" to the entity
+
+Spring Data REST will expose these endpoints for free
+-------------
+REST API
+HTTP Method     CRUD                        Action
+-----------------------------------------------------------------------
+POST            /employees                  Create a new employee
+GET             /employees                  Read a list of employees
+GET             /employees/{employeeId}     Read a single employee
+PUT             /employees/{employeeId}     Update an existing employee
+DELETE          /employees/{employeeId}     Delete an existing employee
+
+• Spring Data REST endpoints are HATEOAS compliant (HATEOAS: Hypermedia as the Engine of Application State)
+• Spring Data REST response using HATEOAS
+• For example REST response from: GET /employees/3
+{
+    "firstName": "Avani",
+    "lastName": "Gupta",
+    "email": "avani@luv2code.com",
+    "_links": {
+        "self": {
+            "href": "http://localhost:8080/employees/3"
+        },
+        "employee": {
+            "href": "http://localhost:8080/employees/3"
+        }
+    }
+}
+
+• For a collection, meta-data includes page size, total elements, pages etc
+    • For example REST response from: GET /employees
+{
+"_embedded": {
+    "employees": [
+        {
+            "firstName": "Leslie",
+            ...
+        },
+        ...
+    ]
+    },
+    "page": {
+        "size": 20,
+        "totalElements": 5,
+        "totalPages": 1,
+        "number": 0
+    }
+}
+
+Spring Data REST advanced features
+-----------------------------------
+• Pagination, sorting and searching
+• Extending and adding custom queries with JPQL
+• Query Domain Specific Language (Query DSL)
+
+Note: 
+• you can change the base-path of REST endpoint by specifying the following property
+spring.data.rest.base-path=/magic-api
+• spring data rest PUT uses only the id in the URL. If id is supplied in the body then it is ignored.
+
+Advanced options:
+Specify plural name / path with an annotation
+@RepositoryRestResource(path="members")
+public interface EmployeeRepository extends JpaRepository<Employee, Integer> {}
+
+Pagination:
+• By default, Spring Data REST will return the first 20 elements
+• Page size = 20
+• You can navigate to the different pages of data using query param
+http://localhost:8080/employees?page=0
+http://localhost:8080/employees?page=1
+you can change default page size using below application property
+spring.data.rest.default-page-size=50
+
+Sorting:
+ascending is default:
+http://localhost:8080/employees?sort=lastName
+sort by lastname, then firstname, ascending
+http://localhost:8080/employees?sort=lastName,firstName,asc
+
+sort descending:
+http://localhost:8080/employees?sort=firstName,desc
+
+Spring boot with thymeleaf:
+--------------------------
+Thymeleaf is java templating engine similar to jsp that can be used to generate HTML views for webapps.
+But thymeleaf pages can directly be opened in browser and is valid html document though the thymeleaf tags are ignored.
+It can also be used in email templates like for sending welcome emails and in PDF templates.
+
+Based on below dependency, Spring Boot will auto configure to use Thymeleaf templates
+<dependency>
+ <groupId>org.springframework.boot</groupId>
+ <artifactId>spring-boot-starter-thymeleaf</artifactId>
+</dependency>
+
+whenever controller returns a <string>, spring boot will look in src/main/resources/templates/ for file with name <string>.html
+
+eg:
+@Controller
+public class DemoController {
+@GetMapping("/")
+public String sayHello(Model theModel) {
+
+ theModel.addAttribute("theDate", new java.util.Date());
+
+ return "helloworld";
+ }
+}
+
+spring boot will look for src/main/resources/templates/helloworld.html
+
+helloword.html:
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head> </head>
+<body>
+ <p th:text="'Time on the server is ' + ${theDate}" />
+</body>
+</html>
+
+Additional Features
+• Looping and conditionals
+• CSS and JavaScript integration
+• Template layouts and fragments
+
+Spring Boot will search following directories int the given order for static resources:
+/src/main/resources
+    1. /META-INF/resources
+    2. /resources
+    3. /static
+    4. /public
+
+spring boot security
+--------------------------
+To enable security in spring boot add the Spring Boot security starter dependency to your build
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+
+Adding above dependency enables http basic authentication.
+Password will be randomly generated and written to application log file. sample log entry given below
+Using default security password: 087cfc6a-027d-44bc-95d7-cbb3a798a1ea
+
+For having in-memory or jdbc authentication, process is same as in spring framework
+
+spring boot custom banner in log
+---------------------------------
+create file banner.txt under src/main/resources directory, and put ascii art banner in the file.
+# create ascii text banner from image
+# specify below property
+# place vizsla.jpg file under src/main/resources
+spring.banner.image.location=vizsla.jpg
+
+spring boot CommandLineRunner for loading/bootstrapping initial data ( seed data ) for application
+---------------------------------
+import guru.springframework.sfgpetclinic.model.*;
+import guru.springframework.sfgpetclinic.services.*;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
+
+import java.time.LocalDate;
+
+@Component
+public class DataLoader implements CommandLineRunner {
+
+    private final OwnerService ownerService;
+    private final PetTypeService petTypeService;
+
+    public DataLoader(OwnerService ownerService,PetTypeService petTypeService) {
+        this.ownerService = ownerService;
+        this.petTypeService = petTypeService;
+    }
+
+    @Override
+    public void run(String... args) throws Exception {
+
+        int count = petTypeService.findAll().size();
+        if (count == 0 ){ loadData(); }
+    }
+
+    private void loadData() {
+        Owner owner1 = new Owner();
+        owner1.setFirstName("Michael");
+        owner1.setLastName("Weston");
+        owner1.setAddress("123 Brickerel");
+
+        Pet mikesPet = new Pet();
+        mikesPet.setOwner(owner1);
+        mikesPet.setBirthDate(LocalDate.now());
+        mikesPet.setName("Rosco");
+        owner1.getPets().add(mikesPet);
+
+        ownerService.save(owner1);
+        System.out.println("Loaded Data....");
+    }
+}
+
+Spring boot integration test
+---------------------
+@RunWith(SpringJUnit4ClassRunner.class)
+@SpringApplicationConfiguration(classes=ReadingListApplication.class)
+@WebIntegrationTest
+public class SimpleWebTest {
+    @Test(expected=HttpClientErrorException.class) 
+    public void pageNotFound() {
+        try {
+            RestTemplate rest = new RestTemplate();
+            rest.getForObject("http://localhost:8080/bogusPage", String.class);
+            fail("Should result in HTTP 404");
+        } catch (HttpClientErrorException e) {
+            assertEquals(HttpStatus.NOT_FOUND, e.getStatusCode());
+            throw e;
+        } 
+    }
+}
+
+starting server on random port:
+--------------
+@WebIntegrationTest(value={"server.port=0"})
+or
+@WebIntegrationTest(randomPort=true)
+
+injecting random port into a variable:
+
+@Value("${local.server.port}")
+private int port;
+
+Testing html pages with selenium
+---------------------
+
+testCompile("org.seleniumhq.selenium:selenium-java:2.45.0")
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@SpringApplicationConfiguration(
+    classes=ReadingListApplication.class)
+@WebIntegrationTest(randomPort=true)
+public class ServerWebTests {
+    private static FirefoxDriver browser;
+    @Value("${local.server.port}")
+    private int port;
+
+
+    @BeforeClass
+    public static void openBrowser() {
+        browser = new FirefoxDriver();
+        browser.manage().timeouts()
+            .implicitlyWait(10, TimeUnit.SECONDS);      //sets up firefox driver
+    }
+  
+    @AfterClass
+    public static void closeBrowser() {
+        browser.quit();                                 //shuts down browser
+    }
+    @Test
+    public void addBookToEmptyList() {
+        String baseUrl = "http://localhost:" + port;
+        browser.get(baseUrl);                                  //fetches home page
+        assertEquals("You have no books in your book list",
+            browser.findElementByTagName("div").getText());    //asserts an empty book list
+        browser.findElementByName("title")
+            .sendKeys("BOOK TITLE");
+        browser.findElementByName("author")
+            .sendKeys("BOOK AUTHOR");
+        browser.findElementByName("isbn")
+            .sendKeys("1234567890");
+        browser.findElementByName("description")
+            .sendKeys("DESCRIPTION");
+        browser.findElementByTagName("form")
+            .submit();                                          //fills in and submits form
+        WebElement dl = browser.findElementByCssSelector("dt.bookHeadline");
+        assertEquals("BOOK TITLE by BOOK AUTHOR (ISBN: 1234567890)", dl.getText());
+        WebElement dt = browser.findElementByCssSelector("dd.bookDescription");
+        assertEquals("DESCRIPTION", dt.getText());              //asserts new book in list
+    }
+}
+
+spring boot actuator
+--------------------
+GET     /autoconfig             Provides an auto-configuration report describing what autoconfiguration conditions passed and failed.
+GET     /configprops            Describes how beans have been injected with configuration properties (including default values).
+GET     /beans                  Describes all beans in the application context and their relationship to each other.
+GET     /dump                   Retrieves a snapshot dump of thread activity.
+GET     /env                    Retrieves all environment properties.
+GET     /env/{name}             Retrieves a specific environment value by name.
+GET     /health                 Reports health metrics for the application, as provided by HealthIndicator implementations.
+GET     /info                   Retrieves custom information about the application, as provided by any properties prefixed with info.
+GET     /mappings               Describes all URI paths and how they’re mapped to controllers (including Actuator endpoints).
+GET     /metrics                Reports various application metrics such as memory usage and HTTP request counters.
+GET     /metrics/{name}         Reports an individual application metric by name.
+POST    /shutdown               Shuts down the application; requires that endpoints.shutdown.enabled be set to true.
+GET     /trace                  Provides basic trace information (timestamp, headers, and so on) for HTTP requests.
+
+dependency:
+
+<dependency> 
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+
+enable/disable, changing name for actuator endpoints:
+
+endpoints:
+    metrics:
+        enabled: false
+
+disable all actuator endpoints except metrics:
+
+endpoints:
+    enabled: false
+        metrics:
+            enabled: true
+
+setting URL context for actuator endpoints:
+management.context-path=/mgmt
+
+securing actuator endpoints:
+.antMatchers("/mgmt/**").access("hasRole('ADMIN')")
+
+spring boot jms
+---------------
+sample repo: https://github.com/springframeworkguru/sfg-jms
+active-mq artemis embedded server maven dependency:
+---------------
+<dependency>
+    <groupId>org.apache.activemq</groupId>
+    <artifactId>artemis-server</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.apache.activemq</groupId>
+    <artifactId>artemis-jms-server</artifactId>
+</dependency>
+
+you can use any java POJO as JMS message object
+It must implement serializable interface
+
+spring boot active-mq artemis embedded server(broker) configuration
+---------------
+// note: broker is not listening on any port instead uses "invm" calls
+@SpringBootApplication
+public class SfgJmsApplication {
+
+	public static void main(String[] args) throws Exception {
+
+		ActiveMQServer server = ActiveMQServers.newActiveMQServer(new ConfigurationImpl()
+			.setPersistenceEnabled(false)
+			.setJournalDirectory("target/data/journal")
+			.setSecurityEnabled(false)
+			.addAcceptorConfiguration("invm", "vm://0"));
+		server.start();
+		SpringApplication.run(SfgJmsApplication.class, args);
+	}
+}
+
+spring boot jms message converter bean to convert java message object(POJO) to json and vice versa
+---------------
+@Configuration
+public class JmsConfig {
+
+    public static final String MY_QUEUE = "my-hello-world";
+    public static final String MY_SEND_RCV_QUEUE = "replybacktome";
+
+    @Bean // Serialize message content to json using TextMessage
+    public MessageConverter jacksonJmsMessageConverter(ObjectMapper objectMapper) {
+        MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
+        converter.setTargetType(MessageType.TEXT);
+        converter.setTypeIdPropertyName("_type");
+        converter.setObjectMapper(objectMapper);
+        return converter;
+    }
+}
+
+spring boot jms message sender configuration
+---------------
+@EnableScheduling
+@EnableAsync
+@Configuration
+public class TaskConfig {
+
+    @Bean
+    TaskExecutor taskExecutor(){
+        return new SimpleAsyncTaskExecutor();
+    }
+}
+
+@RequiredArgsConstructor
+@Component
+public class HelloSender {
+
+    private final JmsTemplate jmsTemplate;
+    private final ObjectMapper objectMapper;
+
+    @Scheduled(fixedRate = 2000)
+    public void sendMessage(){
+
+        HelloWorldMessage message = HelloWorldMessage
+                .builder()
+                .id(UUID.randomUUID())
+                .message("Hello World!")
+                .build();
+        jmsTemplate.convertAndSend(JmsConfig.MY_QUEUE, message);
+    }
+}
+
+spring boot jms message receiver configuration
+---------------
+@Component
+public class HelloMessageListener {
+
+    @JmsListener(destination = JmsConfig.MY_QUEUE)
+    public void listen(@Payload HelloWorldMessage helloWorldMessage,
+                       @Headers MessageHeaders headers, Message message){
+
+        System.out.println("I Got a Message!!!!!");
+        System.out.println(helloWorldMessage);
+        
+        // uncomment and view to see retry count in debugger
+        // throw new RuntimeException("foo");
+
+    }
+}
+
+spring boot jms send and receive acknowledgement
+---------------
+https://github.com/springframeworkguru/sfg-jms/tree/jms-send-receive/src/main/java/guru/springframework/sfgjms
+
+// in JmsConfig
+public static final String MY_SEND_RCV_QUEUE = "replybacktome";
+
+// jms receiver which accepts message from queue and sends back reply
+@RequiredArgsConstructor
+@Component
+public class HelloMessageListener {
+
+    private final JmsTemplate jmsTemplate;
+    
+    @JmsListener(destination = JmsConfig.MY_SEND_RCV_QUEUE)
+    public void listenForHello(@Payload HelloWorldMessage helloWorldMessage,
+                       @Headers MessageHeaders headers, Message message) throws JMSException {
+
+        HelloWorldMessage payloadMsg = HelloWorldMessage
+                .builder()
+                .id(UUID.randomUUID())
+                .message("World!!")
+                .build();
+
+        jmsTemplate.convertAndSend(message.getJMSReplyTo(), payloadMsg);
+    }
+}
+
+// jms sender which sends message and receives the reply
+@RequiredArgsConstructor
+@Component
+public class HelloSender {
+    private final JmsTemplate jmsTemplate;
+    private final ObjectMapper objectMapper;
+    
+    @Scheduled(fixedRate = 2000)
+    public void sendandReceiveMessage() throws JMSException {
+
+        HelloWorldMessage message = HelloWorldMessage
+                .builder()
+                .id(UUID.randomUUID())
+                .message("Hello")
+                .build();
+
+        Message receviedMsg = jmsTemplate.sendAndReceive(JmsConfig.MY_SEND_RCV_QUEUE, new MessageCreator() {
+            @Override
+            public Message createMessage(Session session) throws JMSException {
+                Message helloMessage = null;
+                try {
+                    helloMessage = session.createTextMessage(objectMapper.writeValueAsString(message));
+                    helloMessage.setStringProperty("_type", "guru.springframework.sfgjms.model.HelloWorldMessage");
+
+                    System.out.println("Sending Hello");
+                    return helloMessage;
+                } catch (JsonProcessingException e) {
+                   throw new JMSException("boom");
+                }
+            }
+        });
+
+        System.out.println(receviedMsg.getBody(String.class));
+    }
+}
+
+running activemq artemis docker image
+---------------
+https://artemiscloud.io/blog/deploybasicimage/
+docker run -e AMQ_USER=admin -e AMQ_PASSWORD=admin -p80:8161 --name artemis apache/activemq-artemis
+
+spring boot jms connecting to external broker service (not embedded server)
+---------------
+no need to have maven artemis server dependencies in pom
+no need to have embedded server startup code in main method
+need to correctly set username, password, ip and port properties
+set spring.artemis.mode=native
+
+spring boot jms artemis properties
+---------------
+spring.artemis.mode=native
+spring.artemis.host=192.168.1.210
+spring.artemis.port=9876
+spring.artemis.user=admin
+spring.artemis.password=secret
+
+getting from jms connection from jndi
+spring.jms.jndi-name=java:/MyConnectionFactory
+
+spring state machine
+---------------
+A state machine can be loosely defined as anything with a set of known states.
+Its same as finite automata, which consists of the following
+
+• Finite set of states
+• Set of inputs
+• Initial State
+• Final State
+• Transition Function
+
+State Machine Terminology
+• States - The specific state of the state machine. Finite and predetermined values.
+• Frequently defined in an enumeration
+• Events - Something that happens to the system - may or may not change the state.
+• Actions - The response of the State Machine to events. Can be changing variables, 
+    calling a method or changing to a different state
+• Transitions - Type of action which changes state
+• Guards - Boolean conditions
+• Extended State - State Machine variables (in addition to state)
+
+Maven dependency
+-----------------
+<dependency>
+    <groupId>org.springframework.statemachine</groupId>
+    <artifactId>spring-statemachine-core</artifactId>
+    <version>2.1.3.RELEASE</version>
+</dependency>
+
+spring state machine example
+-----------------
+TODO: attach screenshot for washing machine
+
+creating and using spring state machine
+-----------------
+
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+@Entity
+public class Payment {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentState state;
+
+    private BigDecimal amount;
+}
+
+public enum PaymentEvent {
+    PRE_AUTHORIZE, PRE_AUTH_APPROVED, PRE_AUTH_DECLINED, AUTHORIZE, AUTH_APPROVED, AUTH_DECLINED
+}
+
+public enum PaymentState {
+    NEW, PRE_AUTH, PRE_AUTH_ERROR, AUTH, AUTH_ERROR
+}
+
+// state machine
+import guru.springframework.msscssm.domain.PaymentEvent;
+import guru.springframework.msscssm.domain.PaymentState;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.statemachine.*;
+import java.util.EnumSet;
+
+@Slf4j
+@EnableStateMachineFactory
+@Configuration
+public class StateMachineConfig extends StateMachineConfigurerAdapter<PaymentState, PaymentEvent> {
+
+    @Override
+    public void configure(StateMachineStateConfigurer<PaymentState, PaymentEvent> states) throws Exception {
+        states.withStates()
+                .initial(PaymentState.NEW)
+                .states(EnumSet.allOf(PaymentState.class))
+                .end(PaymentState.AUTH)
+                .end(PaymentState.PRE_AUTH_ERROR)
+                .end(PaymentState.AUTH_ERROR);
+    }
+
+    @Override
+    public void configure(StateMachineTransitionConfigurer<PaymentState, PaymentEvent> transitions) throws Exception {
+        transitions.withExternal().source(PaymentState.NEW).target(PaymentState.NEW).event(PaymentEvent.PRE_AUTHORIZE)
+                .and()
+                .withExternal().source(PaymentState.NEW).target(PaymentState.PRE_AUTH).event(PaymentEvent.PRE_AUTH_APPROVED)
+                .and()
+                .withExternal().source(PaymentState.NEW).target(PaymentState.PRE_AUTH_ERROR).event(PaymentEvent.PRE_AUTH_DECLINED);
+    }
+
+    @Override
+    public void configure(StateMachineConfigurationConfigurer<PaymentState, PaymentEvent> config) throws Exception {
+        StateMachineListenerAdapter<PaymentState, PaymentEvent> adapter = new StateMachineListenerAdapter<>(){
+            @Override
+            public void stateChanged(State<PaymentState, PaymentEvent> from, State<PaymentState, PaymentEvent> to) {
+                log.info(String.format("stateChanged(from: %s, to: %s)", from, to));
+            }
+        };
+
+        config.withConfiguration()
+                .listener(adapter);
+    }
+}
+
+spring state machine unit test 
+-----------------------
+
+import guru.springframework.msscssm.domain.*;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.statemachine.*;
+import java.util.UUID;
+
+@SpringBootTest
+class StateMachineConfigTest {
+
+    @Autowired
+    StateMachineFactory<PaymentState, PaymentEvent> factory;
+
+    @Test
+    void testNewStateMachine() {
+        StateMachine<PaymentState, PaymentEvent> sm = factory.getStateMachine(UUID.randomUUID());
+
+        sm.start();
+        System.out.println(sm.getState().toString());
+
+        sm.sendEvent(PaymentEvent.PRE_AUTHORIZE);
+        System.out.println(sm.getState().toString());
+
+        sm.sendEvent(PaymentEvent.PRE_AUTH_APPROVED);
+        System.out.println(sm.getState().toString());
+
+        sm.sendEvent(PaymentEvent.PRE_AUTH_DECLINED);
+        System.out.println(sm.getState().toString());
+
+    }
+}
+
+public interface PaymentService {
+    Payment newPayment(Payment payment);
+    StateMachine<PaymentState, PaymentEvent> preAuth(Long paymentId);
+    StateMachine<PaymentState, PaymentEvent> authorizePayment(Long paymentId);
+    StateMachine<PaymentState, PaymentEvent> declineAuth(Long paymentId);
+}
+
+@RequiredArgsConstructor
+@Service
+public class PaymentServiceImpl implements PaymentService {
+    public static final String PAYMENT_ID_HEADER = "payment_id";
+    private final PaymentRepository paymentRepository;
+    private final StateMachineFactory<PaymentState, PaymentEvent> stateMachineFactory;
+    private final PaymentStateChangeInterceptor paymentStateChangeInterceptor;
+
+    @Override
+    public Payment newPayment(Payment payment) {
+        payment.setState(PaymentState.NEW);
+        return paymentRepository.save(payment);
+    }
+
+    @Transactional
+    @Override
+    public StateMachine<PaymentState, PaymentEvent> preAuth(Long paymentId) {
+        StateMachine<PaymentState, PaymentEvent> sm = build(paymentId);
+        sendEvent(paymentId, sm, PaymentEvent.PRE_AUTHORIZE);
+        return sm;
+    }
+
+    @Transactional
+    @Override
+    public StateMachine<PaymentState, PaymentEvent> authorizePayment(Long paymentId) {
+        StateMachine<PaymentState, PaymentEvent> sm = build(paymentId);
+        sendEvent(paymentId, sm, PaymentEvent.AUTHORIZE);
+        return sm;
+    }
+
+    @Deprecated // not needed
+    @Transactional
+    @Override
+    public StateMachine<PaymentState, PaymentEvent> declineAuth(Long paymentId) {
+        StateMachine<PaymentState, PaymentEvent> sm = build(paymentId);
+        sendEvent(paymentId, sm, PaymentEvent.AUTH_DECLINED);
+        return sm;
+    }
+
+    private void sendEvent(Long paymentId, StateMachine<PaymentState, PaymentEvent> sm, PaymentEvent event){
+        Message msg = MessageBuilder.withPayload(event)
+                .setHeader(PAYMENT_ID_HEADER, paymentId)
+                .build();
+        sm.sendEvent(msg);
+    }
+
+    private StateMachine<PaymentState, PaymentEvent> build(Long paymentId){
+        Payment payment = paymentRepository.getOne(paymentId);
+        StateMachine<PaymentState, PaymentEvent> sm = stateMachineFactory.getStateMachine(Long.toString(payment.getId()));
+        sm.stop();
+        sm.getStateMachineAccessor()
+                .doWithAllRegions(sma -> {
+                    sma.addStateMachineInterceptor(paymentStateChangeInterceptor);
+                    sma.resetStateMachine(new DefaultStateMachineContext<>(payment.getState(), null, null, null));
+                });
+        sm.start();
+        return sm;
+    }
+}
+
+// using spring state machine interceptor to store payment state in database
+@RequiredArgsConstructor
+@Component
+public class PaymentStateChangeInterceptor extends StateMachineInterceptorAdapter<PaymentState, PaymentEvent> {
+    private final PaymentRepository paymentRepository;
+
+    @Override
+    public void preStateChange(State<PaymentState, PaymentEvent> state, Message<PaymentEvent> message,
+                               Transition<PaymentState, PaymentEvent> transition, StateMachine<PaymentState, PaymentEvent> stateMachine) {
+        Optional.ofNullable(message).ifPresent(msg -> {
+            Optional.ofNullable(Long.class.cast(msg.getHeaders().getOrDefault(PaymentServiceImpl.PAYMENT_ID_HEADER, -1L)))
+                    .ifPresent(paymentId -> {
+                        Payment payment = paymentRepository.getOne(paymentId);
+                        payment.setState(state.getId());
+                        paymentRepository.save(payment);
+                    });
+        });
+    }
+}
+
+Spring state machine configuring actions and guards
+------------------
+https://github.com/springframeworkguru/mssc-ssm/tree/sm-guards/src/main/java/guru/springframework/msscssm
+
+//code snippet
+@Slf4j
+@EnableStateMachineFactory
+@Configuration
+public class StateMachineConfig extends StateMachineConfigurerAdapter<PaymentState, PaymentEvent> {
+    @Override
+    public void configure(StateMachineTransitionConfigurer<PaymentState, PaymentEvent> transitions) throws Exception {
+        transitions.withExternal().source(PaymentState.NEW).target(PaymentState.NEW).event(PaymentEvent.PRE_AUTHORIZE)
+                    .action(preAuthAction()).guard(paymentIdGuard())
+                .and()
+                .withExternal().source(PaymentState.NEW).target(PaymentState.PRE_AUTH).event(PaymentEvent.PRE_AUTH_APPROVED)
+                //....
+    }
+
+    public Guard<PaymentState, PaymentEvent> paymentIdGuard(){
+        return context -> {
+            return context.getMessageHeader(PaymentServiceImpl.PAYMENT_ID_HEADER) != null;
+        };
+    }
+
+    public Action<PaymentState, PaymentEvent> preAuthAction(){
+        return context -> {
+            System.out.println("PreAuth was called!!!");
+            if (new Random().nextInt(10) < 8) {
+                System.out.println("Pre Auth Approved");
+                context.getStateMachine().sendEvent(MessageBuilder.withPayload(PaymentEvent.PRE_AUTH_APPROVED)
+                    .setHeader(PaymentServiceImpl.PAYMENT_ID_HEADER, context.getMessageHeader(PaymentServiceImpl.PAYMENT_ID_HEADER))
+                    .build());
+            } else {
+                System.out.println("Per Auth Declined! No Credit!!!!!!");
+                context.getStateMachine().sendEvent(MessageBuilder.withPayload(PaymentEvent.PRE_AUTH_DECLINED)
+                        .setHeader(PaymentServiceImpl.PAYMENT_ID_HEADER, context.getMessageHeader(PaymentServiceImpl.PAYMENT_ID_HEADER))
+                        .build());
+            }
+        };
+    }
+}
+
+
+
+spring cloud gateway
+--------------------
+<!-- https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-starter-gateway -->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-gateway</artifactId>
+    <version>3.1.0</version>
+</dependency>
+
+#application.properties
+spring.application.name=sfg-brewery-gateway
+server.port=9090
+
+#sample router config to redirect to google
+package com.sfg.gateway.config;
+import org.springframework.cloud.gateway.route.RouteLocator;
+import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
+import org.springframework.context.annotation.Bean;
+
+/**
+ * Created by jt on 3/5/20.
+ */
+@Profile("google")
+@Configuration
+public class GoogleConfig {
+    /**
+     * This is just an example of routing requests to Google from localhost. For demonstration only
+     * @param builder
+     * @return
+     */
+    @Bean
+    public RouteLocator googleRouteConfig(RouteLocatorBuilder builder){
+        return builder.routes()
+                .route(r -> r.path("/googlesearch2")
+                        .filters(f -> f.rewritePath("/googlesearch2(?<segment>/?.*)", "/${segment}"))
+                .uri("https://google.com")
+                .id("google"))
+                .build();
+    }
+}
+
+netflix eureka used as service registry
+---------------
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+</dependency>
+
+#application.properties
+server.port=8761
+eureka.client.register-with-eureka=false
+eureka.client.fetch-registry=false
+logging.level.com.netflix.eureka=OFF
+logging.level.com.netflix.discovery=OFF
+spring.zipkin.baseUrl= http://localhost:9411/
+spring.security.user.name=netflix
+spring.security.user.password=eureka
+
+local discovery configuration in client service
+-----------------------
+<!--pom dependency-->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+</dependency>
+
+#application.properties
+spring.application.name=beer-service
+
+#LocalDiscovery.java
+@Profile("local-discovery")
+@EnableDiscoveryClient
+@Configuration
+public class LocalDiscovery {
+}
+
+#set active profile -> local-discovery
+
+configuring open feign client for calling service in eureka
+-------------------------
+Reference
+https://www.udemy.com/course/spring-boot-microservices-with-spring-cloud-beginner-to-guru/learn/lecture/18453080#overview
+https://github.com/springframeworkguru/mssc-beer-service/issues/55
+
+#add dependency in source project from where we are going to invoke service registered in eureka
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+
+#add annotation in application class
+import org.springframework.cloud.openfeign.EnableFeignClients;
+@EnableFeignClients
+@SpringBootApplication
+public class MsscBeerServiceApplication {
+    public static void main(String[] args) { SpringApplication.run(MsscBeerServiceApplication.class, args); }
+}
+
+#create service client interface
+import org.springframework.cloud.openfeign.FeignClient;
+@FeignClient(name = "inventory-service")
+public interface InventoryServiceFeignClient {
+
+    @RequestMapping(method = RequestMethod.GET, value = BeerInventoryServiceRestTemplateImpl.INVENTORY_PATH)
+    ResponseEntity<List<BeerInventoryDto>> getOnhandInventory(@PathVariable UUID beerId);
+}
+
+#invoking service registered in eureka using open feign client
+@Slf4j
+@RequiredArgsConstructor
+@Profile("local-discovery")
+@Service
+public class BeerInventoryServiceFeign implements BeerInventoryService {
+
+    private final InventoryServiceFeignClient inventoryServiceFeignClient;
+
+    @Override
+    public Integer getOnhandInventory(UUID beerId) {
+        log.debug("Calling Inventory Service - BeerId: " + beerId);
+        ResponseEntity<List<BeerInventoryDto>> responseEntity = inventoryServiceFeignClient.getOnhandInventory(beerId);
+        Integer onHand = Objects.requireNonNull(responseEntity.getBody())
+                .stream()
+                .mapToInt(BeerInventoryDto::getQuantityOnHand)
+                .sum();
+        log.debug("BeerId: " + beerId + " On hand is: " + onHand);
+        return onHand;
+    }
+}
+
+
+configuring spring cloud gateway to use eureka
+----------------------
+Reference:
+https://www.udemy.com/course/spring-boot-microservices-with-spring-cloud-beginner-to-guru/learn/lecture/18485228#overview
+https://github.com/springframeworkguru/mssc-brewery-gateway/issues/6
+
+
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+</dependency>
+
+#configuration to avoid gateway service from registering itself in eureka
+#application.properties
+eureka.client.register-with-eureka=false
+
+#configuring routes to services registered in eureka
+#beer-service, order-service etc are services registered in eureka
+@Profile("local-discovery")
+@Configuration
+public class LoadBalancedRoutesConfig {
+
+    @Bean
+    public RouteLocator loadBalancedRoutes(RouteLocatorBuilder builder){
+        return builder.routes()
+                .route(r -> r.path("/api/v1/beer*", "/api/v1/beer/*", "/api/v1/beerUpc/*")
+                        .uri("lb://beer-service")
+                        .id("beer-service"))
+                .route(r -> r.path("/api/v1/customers/**")
+                        .uri("lb://order-service")
+                        .id("order-service"))
+                .route(r -> r.path("/api/v1/beer/*/inventory")
+                        .uri("lb://inventory-service")
+                        .id("inventory-service"))
+                .build();
+    }
+
+}
+
+configuring circuit breaker for a service using resilience4j
+----------------------------
+Reference:
+https://www.udemy.com/course/spring-boot-microservices-with-spring-cloud-beginner-to-guru/learn/lecture/18498932#overview
+https://github.com/springframeworkguru/mssc-brewery-gateway/issues/7
+
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-circuitbreaker-reactor-resilience4j</artifactId>
+</dependency>
+
+@Profile("local-discovery")
+@Configuration
+public class LoadBalancedRoutesConfig {
+    @Bean
+    public RouteLocator loadBalancedRoutes(RouteLocatorBuilder builder){
+        return builder.routes()
+                .route(r -> r.path("/api/v1/beer*", "/api/v1/beer/*", "/api/v1/beerUpc/*")
+                        .uri("lb://beer-service")
+                        .id("beer-service"))
+                .route(r -> r.path("/api/v1/customers/**")
+                        .uri("lb://order-service")
+                        .id("order-service"))
+                .route(r -> r.path("/api/v1/beer/*/inventory")
+// ADDED BELOW CODE TO SPECIFY CRICUIT BREAKER
+                        .filters(f -> f.circuitBreaker(c -> c.setName("inventoryCB")
+                                        .setFallbackUri("forward:/inventory-failover")
+                                        .setRouteId("inv-failover")
+                                    ))
+                        .uri("lb://inventory-service")
+                        .id("inventory-service"))
+// SPECIFYING ROUTE TO THE SERVICE WHICH ACTS AS FAILOVER
+// THIS ENDPOINT IS HIT WHEN INVENTORY-SERVICE ENDPOINT FAILS
+                .route(r -> r.path("/inventory-failover/**")
+                        .uri("lb://inventory-failover")
+                        .id("inventory-failover-service"))
+                .build();
+    }
+
+}
+
+configuring Hystrix Circuit Breaker for Inventory Service
+----------------------------
+Reference:
+https://www.udemy.com/course/spring-boot-microservices-with-spring-cloud-beginner-to-guru/learn/lecture/18499472#overview
+https://github.com/springframeworkguru/mssc-beer-service/issues/57
+
+Spring Boot doesn't provide a hystrix anymore so use resilience4j
+In the application.properties instead of 'feign.hystrix.enabled=true' should be the following property  'feign.circuitbreaker.enabled=true'.
+
+#add in application properties
+feign.hystrix.enabled=true
+
+#create feign client interface
+@FeignClient(name = "inventory-failover")
+public interface InventoryFailoverFeignClient {
+
+    @RequestMapping(method = RequestMethod.GET, value = "/inventory-failover")
+    ResponseEntity<List<BeerInventoryDto>> getOnhandInventory();
+}
+
+#create fallback implementation
+@RequiredArgsConstructor
+@Component
+public class InventoryServiceFeignClientFailover implements InventoryServiceFeignClient {
+
+    private final InventoryFailoverFeignClient failoverFeignClient;
+
+    @Override
+    public ResponseEntity<List<BeerInventoryDto>> getOnhandInventory(UUID beerId) {
+        return failoverFeignClient.getOnhandInventory();
+    }
+}
+
+#specify fallback in feign client of actual service
+@FeignClient(name = "inventory-service", fallback = InventoryServiceFeignClientFailover.class)
+public interface InventoryServiceFeignClient {
+
+    @RequestMapping(method = RequestMethod.GET, value = BeerInventoryServiceRestTemplateImpl.INVENTORY_PATH)
+    ResponseEntity<List<BeerInventoryDto>> getOnhandInventory(@PathVariable UUID beerId);
+}
+
+
+Spring cloud config server
+---------------------------------
+• Spring Cloud Config provides externalized configuration for distributed environments
+• Provides a RESTFul style API for Spring services to lookup configuration values
+• Spring Boot applications on startup obtain configuration values from Spring Cloud Config server
+• Properties can be global and application specific
+• Properties can also be stored by Spring profiles
+• Easily encrypt and decrypt properties
+
+• Spring Cloud Config provides a number of options for property storage:
+    • Git (default) or SVN
+    • File System
+    • HashiCorp's Vault
+    • JDBC, Redis
+    • AWS S3
+    • CredHub
+
+• Spring Cloud Config Client by default will look for a URL property
+• 'spring.cloud.config.url' - default is http://localhost:8888
+• If using discovery client, client will look for service called 'configserver'
+• Fail Fast - optionally configure client to fail with exception if config server cannot be reached 
+
+• Resources served as: /application/profile/label
+• application = spring.application.name
+• profile = Spring active profile(s)
+• label = spring.cloud.config.label
+
+Reference:
+https://github.com/springframeworkguru/mssc-config-server
+
+application properties are served from below github repo
+https://github.com/springframeworkguru/mssc-brewery-config-repo
+
+Maven dependencies:
+------
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-config-server</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+</dependency>
+
+import org.springframework.cloud.config.server.EnableConfigServer;
+
+Initialize config server in spring boot application
+------
+@EnableConfigServer
+@SpringBootApplication
+public class MsscConfigServerApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(MsscConfigServerApplication.class, args);
+	}
+
+}
+
+#application.properties
+server.port=8888
+spring.application.name=mssc-brewery-config
+
+spring.cloud.config.server.git.uri=https://github.com/springframeworkguru/mssc-brewery-config-repo
+spring.cloud.config.server.git.clone-on-start=true
+spring.cloud.config.server.git.search-paths={application}
+
+logging.level.org.springframework.cloud=debug
+logging.level.org.springframework.web=debug
+
+hit url and verify
+http://localhost:8888/foo/default
+http://localhost:8888/anyapp/default
+http://localhost:8888/anyapp/someactiveprofile
+etc
+
+available endpoints for configuration
+/{application}/{profile}[/{label}]
+/{application}-{profile}.yml
+/{label}/{application}-{profile}.yml
+/{application}-{profile}.properties
+/{label}/{application}-{profile}.properties
+
+Configuring properties for specific application and profile
+---------
+create folder with name same as application name in eureka ( in this case beer-service)
+ensure below property is present in spring cloud config application
+spring.cloud.config.server.git.search-paths={application}
+
+add properties for local profile in file application-local.properties
+
+spring.datasource.username=beer_service
+spring.datasource.password=password
+spring.datasource.url=jdbc:mysql://127.0.0.1:3306/beerservice?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC
+spring.jpa.database=mysql
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL8Dialect
+
+spring.datasource.hikari.maximum-pool-size=5
+
+spring.datasource.hikari.data-source-properties.cachePrepStmts=true
+spring.datasource.hikari.data-source-properties.prepStmtCacheSize=250
+spring.datasource.hikari.data-source-properties.prepStmtCacheSqlLimit=2048
+spring.datasource.hikari.data-source-properties.useServerPrepStmts=true
+spring.datasource.hikari.data-source-properties.useLocalSessionState=true
+spring.datasource.hikari.data-source-properties.rewriteBatchedStatements=true
+spring.datasource.hikari.data-source-properties.cacheResultSetMetadata=true
+spring.datasource.hikari.data-source-properties.cacheServerConfiguration=true
+spring.datasource.hikari.data-source-properties.elideSetAutoCommits=true
+spring.datasource.hikari.data-source-properties.maintainTimeStats=false
+
+# Enable logging for config troubleshooting
+#logging.level.org.hibernate.SQL=DEBUG
+#logging.level.com.zaxxer.hikari.HikariConfig=DEBUG
+#logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+
+
+hit below url and verify properties
+http://localhost:8888/beer-service/local
+
+
+configuration to get config from spring cloud config in client application
+--------------
+Reference:
+https://github.com/springframeworkguru/mssc-beer-service/issues/57
+
+in mssc-beer-service,
+Add maven dependency
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-config</artifactId>
+</dependency>
+
+disable cloud config discovery in profile with local configuration
+#application-localmysql.properties
+spring.cloud.discovery.enabled=false
+
+create new resource file for cloud config properties
+#bootstrap-local-discovery.properties
+spring.cloud.discovery.enabled=true
+spring.cloud.config.discovery.service-id=mssc-brewery-config
+
+When running make sure local-discovery profile is active
+Run the application and verify if its fetching configuration properties from spring cloud config
+
+Spring boot swagger
+--------------
+Reference:
+https://www.udemy.com/course/spring-framework-5-beginner-to-guru/learn/lecture/8903672#questions
+
+
+Maven dependency
+--------------
+<dependency>
+    <groupId>io.springfox</groupId>
+    <artifactId>springfox-swagger2</artifactId>
+    <version>${springfox-swagger.version}</version>
+</dependency>
+<dependency>
+    <groupId>io.springfox</groupId>
+    <artifactId>springfox-swagger-ui</artifactId>
+    <version>${springfox-swagger.version}</version>
+</dependency>
+
+//swagger config
+import springfox.documentation.builders.PathSelectors;
+import springfox.documentation.builders.RequestHandlerSelectors;
+import springfox.documentation.spi.DocumentationType;
+import springfox.documentation.spring.web.plugins.Docket;
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+@EnableSwagger2
+@Configuration
+public class SwaggerConfig { //} extends WebMvcConfigurationSupport {
+
+    @Bean
+    public Docket api(){
+        return new Docket(DocumentationType.SWAGGER_2)
+                .select()
+                .apis(RequestHandlerSelectors.any())
+                .paths(PathSelectors.any())
+                .build()
+                .pathMapping("/")
+                .apiInfo(metaData());
+    }
+
+    private ApiInfo metaData(){
+
+        Contact contact = new Contact("John Thompson", "https://springframework.guru/about/",
+                "john@springfrmework.guru");
+
+        return new ApiInfo(
+                "Spring Framework Guru",
+                "Spring Framework 5: Beginner to Guru",
+                "1.0",
+                "Terms of Service: blah",
+                contact,
+                "Apache License Version 2.0",
+                "https://www.apache.org/licenses/LICENSE-2.0",
+                new ArrayList<>());
+    }
+    // If not using spring boot
+//    @Override
+//    protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+//        registry.addResourceHandler("swagger-ui.html")
+//                .addResourceLocations("classpath:/META-INF/resources/");
+//
+//        registry.addResourceHandler("/webjars/**")
+//                .addResourceLocations("classpath:/META-INF/resources/webjars/");
+//    }
+}
+
+Annotating controller code for swagger documentation
+--------------
+
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * Created by jt on 9/27/17.
+ */
+@Api(description = "This is my Customer Controller")
+@RestController
+@RequestMapping(CustomerController.BASE_URL)
+public class CustomerController {
+
+    public static final String BASE_URL = "/api/v1/customers";
+
+    private final CustomerService customerService;
+
+    public CustomerController(CustomerService customerService) {
+        this.customerService = customerService;
+    }
+
+    @ApiOperation(value = "This will get a list of customers.", notes = "These are some notes about the API.")
+    @GetMapping
+    @ResponseStatus(HttpStatus.OK)
+    public CustomerListDTO getListOfCustomers(){
+        return new CustomerListDTO(customerService.getAllCustomers());
+    }
+
+    @GetMapping({"/{id}"})
+    @ResponseStatus(HttpStatus.OK)
+    public CustomerDTO getCustomerById(@PathVariable Long id){
+        return customerService.getCustomerById(id);
+    }
+
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public CustomerDTO createNewCustomer(@RequestBody CustomerDTO customerDTO){
+        return customerService.createNewCustomer(customerDTO);
+    }
+
+    @PutMapping({"/{id}"})
+    @ResponseStatus(HttpStatus.OK)
+    public CustomerDTO updateCustomer(@PathVariable Long id, @RequestBody CustomerDTO customerDTO){
+        return customerService.saveCustomerByDTO(id, customerDTO);
+    }
+
+    @PatchMapping({"/{id}"})
+    @ResponseStatus(HttpStatus.OK)
+    public CustomerDTO patchCustomer(@PathVariable Long id, @RequestBody CustomerDTO customerDTO){
+        return customerService.patchCustomer(id, customerDTO);
+    }
+
+    @DeleteMapping({"/{id}"})
+    @ResponseStatus(HttpStatus.OK)
+    public void deleteCustomer(@PathVariable Long id){
+        customerService.deleteCustomerById(id);
+    }
+}
+
+For API's exposed using swagger, documentation can be browsed at http_S_://HOST:PORT/swagger-ui.html
+You can also invoke the endpoint using given curl command as shown in below image
+ATTACH image: "swagger UI.png"
+
+You can generate client code in various programming languages for API's exposed 
+using swagger/OpenAPI documentation.
+https://github.com/OpenAPITools/openapi-generator

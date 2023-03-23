@@ -1,0 +1,376 @@
+spring data notes
+------------------------------------------
+
+spring data access philosophy
+<Insert Image>
+------------------------------------------
+spring data - templating data access
+<Insert Image>
+------------------------------------------
+spring data access templates
+
+-----------------------------------------------------------------------------
+Template class(org.springframework.*)               | Used to template . . .
+-----------------------------------------------------------------------------
+jca.cci.core.CciTemplate                            | JCA CCI connections
+jdbc.core.JdbcTemplate                              | JDBC connections
+jdbc.core.namedparam.NamedParameterJdbcTemplate     | JDBC connections with support for named parameters
+jdbc.core.simple.SimpleJdbcTemplate                 | JDBC connections, simplified with Java 5 constructs (deprecated in Spring 3.1)
+orm.hibernate3.HibernateTemplate                    | Hibernate 3.x+ sessions
+orm.ibatis.SqlMapClientTemplate                     | iBATIS SqlMap clients
+orm.jdo.JdoTemplate                                 | Java Data Object implementations
+orm.jpa.JpaTemplate                                 | Java Persistence API entity managers
+
+------------------------------------------
+spring data - using JNDI datasource
+
+<!-- xml configuration-->
+<!--
+if the application is running in a Java application server, you’ll want to
+set the resource-ref property to true so that the value given in jndi-name will be
+prepended with java:comp/env/
+-->
+<jee:jndi-lookup id="dataSource"
+jndi-name="/jdbc/SpitterDS"
+resource-ref="true" />
+
+// Java configuration
+@Bean
+public JndiObjectFactoryBean dataSource() {
+    JndiObjectFactoryBean jndiObjectFB = new JndiObjectFactoryBean();
+    jndiObjectFB.setJndiName("jdbc/SpittrDS");
+    jndiObjectFB.setResourceRef(true);
+    jndiObjectFB.setProxyInterface(javax.sql.DataSource.class);
+    return jndiObjectFB;
+}
+
+------------------------------------------
+spring data - configure pooled datasource, available configuration properties
+
+<!-- xml configuration -->
+<bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"
+p:driverClassName="org.h2.Driver"
+p:url="jdbc:h2:tcp://localhost/~/spitter"
+p:username="sa"
+p:password=""
+p:initialSize="5"
+p:maxActive="10" />
+
+@Bean
+public BasicDataSource dataSource() {
+    BasicDataSource ds = new BasicDataSource();
+    ds.setDriverClassName("org.h2.Driver");
+    ds.setUrl("jdbc:h2:tcp://localhost/~/spitter");
+    ds.setUsername("sa");
+    ds.setPassword("");
+    ds.setInitialSize(5);
+    ds.setMaxActive(10);
+    return ds;
+}
+
+BasicDataSource’s pool-configuration properties
+-------------------------------------------------------------
+Pool-configuration property             | What it specifies
+-------------------------------------------------------------
+initialSize                             | The number of connections created when the pool is started.
+maxActive                               | The maximum number of connections that can be allocated from the pool at the same time. If 0, there’s no limit.
+maxIdle                                 | The maximum number of connections that can be idle in the pool without extras being released. If 0, there’s no limit.
+maxOpenPreparedStatements               | The maximum number of prepared statements that can be allocated from the statement pool at the same time. If 0, there’s no limit.
+maxWait                                 | How long the pool will wait for a connection to be returned to the pool (when there are no available connections) before an exception is thrown. If 1, wait indefinitely.
+minEvictableIdleTimeMillis              | How long a connection can remain idle in the pool before it’s eligible for eviction.
+minIdle                                 | The minimum number of connections that can remain idle in the pool without new connections being created.
+poolPreparedStatements                  | Whether or not to pool prepared statements (Boolean).
+
+------------------------------------------
+spring data - types jdbc driver based datasource and configuration
+
+DriverManagerDataSource—Returns a new connection every time a connection is requested. Unlike DBCP’s BasicDataSource, the connections provided by DriverManagerDataSource aren’t pooled.
+
+SimpleDriverDataSource—Works much the same as DriverManagerDataSource except that it works with the JDBC driver directly to overcome class loading issues that may arise in certain environments, such as in an OSGi container.
+
+SingleConnectionDataSource—Returns the same connection every time a connection is requested. Although SingleConnectionDataSource isn’t exactly a pooled data source, you can think of it as a data source with a pool of exactly one connection.
+
+// configuration is similar to how we configure BasicDataSource
+// java configuration
+@Bean
+public DataSource dataSource() {
+    DriverManagerDataSource ds = new DriverManagerDataSource();
+    ds.setDriverClassName("org.h2.Driver");
+    ds.setUrl("jdbc:h2:tcp://localhost/~/spitter");
+    ds.setUsername("sa");
+    ds.setPassword("");
+    return ds;
+}
+
+<!-- xml configuration -->
+<bean id="dataSource"
+    class="org.springframework.jdbc.datasource.DriverManagerDataSource"
+    p:driverClassName="org.h2.Driver"
+    p:url="jdbc:h2:tcp://localhost/~/spitter"
+    p:username="sa"
+    p:password="" />
+
+------------------------------------------
+spring data - configuring embedded database
+
+Spring’s jdbc namespace makes configuring an embedded database simple.
+you may configure zero or more <jdbc:script> elements to set up the database.
+here schema.sql contains SQL to create the tables in the database
+the second references test-data.sql, to populate the database with test data.
+
+<?xml version="1.0" encoding="UTF-8"?> 
+<beans xmlns="http://www.springframework.org/schema/beans"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+xmlns:c="http://www.springframework.org/schema/c"
+xsi:schemaLocation="http://www.springframework.org/schema/jdbc
+http://www.springframework.org/schema/jdbc/spring-jdbc-3.1.xsd
+http://www.springframework.org/schema/beans
+http://www.springframework.org/schema/beans/spring-beans.xsd">
+...
+    <jdbc:embeddeddatabase id="dataSource" type="H2"> 
+        <jdbc:script location="com/habuma/spitter/db/jdbc/schema.sql"/>
+        <jdbc:script location="com/habuma/spitter/db/jdbc/test-data.sql"/> 
+    </jdbc:embedded-database>
+...
+</beans>
+
+// java configuration
+@Bean
+public DataSource dataSource() {
+    return new EmbeddedDatabaseBuilder()
+    .setType(EmbeddedDatabaseType.H2)
+    .addScript("classpath:schema.sql")
+    .addScript("classpath:test-data.sql")
+    .build();
+}
+
+------------------------------------------
+spring data jdbc templates
+
+JdbcTemplate
+The most basic of Spring’s JDBC templates, this class provides simple access to a database through JDBC and indexed-parameter queries.
+
+NamedParameterJdbcTemplate
+This JDBC template class enables you to perform queries where values are bound to named parameters in SQL, rather than indexed parameters.
+
+SimpleJdbcTemplate
+Based on java 5. this is old and deprecated.
+
+------------------------------------------
+spring data - inserting and selecting data using jdbc template
+
+JdbcSpitterRepository is annotated with @Repository, which qualifies it to be automatically created by component-scanning.
+JdbcOperations is an interface defining operations implemented by JdbcTemplate. By injecting a JdbcOperations instead of the concrete JdbcTemplate, JdbcSpitterRepository is able to remain loosely coupled to JdbcTemplate via the JdbcOperations interface.
+
+// define JdbcTemplate bean
+@Bean
+public JdbcTemplate jdbcTemplate(DataSource dataSource) {
+    return new JdbcTemplate(dataSource);
+}
+
+// wire the jdbcTemplate bean into your repository
+@Repository
+public class JdbcSpitterRepository implements SpitterRepository {
+    private JdbcOperations jdbcOperations;
+    @Inject
+    public JdbcSpitterRepository(JdbcOperations jdbcOperations) {
+        this.jdbcOperations = jdbcOperations;
+    }
+    ...
+}
+
+// As an alternative to component-scanning and autowiring, you could explicitly declare JdbcSpitterRepository like below
+package spittr.db.jdbc;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
+
+import spittr.db.SpitterRepository;
+import spittr.domain.Spitter;
+
+public class JdbcSpitterRepository implements SpitterRepository {
+	
+	private JdbcTemplate jdbcTemplate;
+
+    // wire the jdbcTemplate bean into your repository
+	public JdbcSpitterRepository(JdbcTemplate jdbcTemplate) {
+		this.jdbcTemplate = jdbcTemplate;		
+	}
+
+	public long count() {
+		return jdbcTemplate.queryForLong("select count(id) from Spitter");
+	}
+
+	public Spitter save(Spitter spitter) {
+		Long id = spitter.getId();
+		if (id == null) {
+			long spitterId = insertSpitterAndReturnId(spitter);
+			return new Spitter(spitterId, spitter.getUsername(), spitter.getPassword(), spitter.getFullName(), spitter.getEmail(), spitter.isUpdateByEmail());
+		} else {
+			jdbcTemplate.update("update Spitter set username=?, password=?, fullname=?, email=?, updateByEmail=? where id=?",
+					spitter.getUsername(),
+					spitter.getPassword(),
+					spitter.getFullName(),
+					spitter.getEmail(),
+					spitter.isUpdateByEmail(),
+					id);
+		}
+		return spitter;
+	}
+
+    // inserting data, Spitter is POJO
+	/**
+	 * Inserts a spitter using SimpleJdbcInsert. 
+	 * Involves no direct SQL and is able to return the ID of the newly created Spitter.
+	 * @param spitter a Spitter to insert into the databse
+	 * @return the ID of the newly inserted Spitter
+	 */
+	private long insertSpitterAndReturnId(Spitter spitter) {
+		SimpleJdbcInsert jdbcInsert = new SimpleJdbcInsert(jdbcTemplate).withTableName("Spitter");
+		jdbcInsert.setGeneratedKeyName("id");
+		Map<String, Object> args = new HashMap<String, Object>();
+		args.put("username", spitter.getUsername());
+		args.put("password", spitter.getPassword());
+		args.put("fullname", spitter.getFullName());
+		args.put("email", spitter.getEmail());
+		args.put("updateByEmail", spitter.isUpdateByEmail());
+		long spitterId = jdbcInsert.executeAndReturnKey(args).longValue();
+		return spitterId;
+	}
+
+	/**
+	 * Inserts a spitter using a simple JdbcTemplate update() call.
+	 * Does not return the ID of the newly created Spitter.
+	 * @param spitter a Spitter to insert into the database
+	 */
+	@SuppressWarnings("unused")
+	private void insertSpitter(Spitter spitter) {
+		jdbcTemplate.update(INSERT_SPITTER, 
+			spitter.getUsername(),
+			spitter.getPassword(),
+			spitter.getFullName(),
+			spitter.getEmail(),
+			spitter.isUpdateByEmail());
+	}
+
+  // Query for spitter, use rowmapper for creating java object
+  public Spitter findOne(long id) {
+	return jdbcTemplate.queryForObject(
+			SELECT_SPITTER + " where id=?", new SpitterRowMapper(), id);
+  }
+
+	public Spitter findByUsername(String username) {
+		return jdbcTemplate.queryForObject("select id, username, password, fullname, email, updateByEmail from Spitter where username=?", new SpitterRowMapper(), username);
+  }
+
+	public List<Spitter> findAll() {
+		return jdbcTemplate.query("select id, username, password, fullname, email, updateByEmail from Spitter order by id", new SpitterRowMapper());
+	}
+
+	private static final class SpitterRowMapper implements RowMapper<Spitter> {
+		public Spitter mapRow(ResultSet rs, int rowNum) throws SQLException {
+			long id = rs.getLong("id");
+			String username = rs.getString("username");
+			String password = rs.getString("password");
+			String fullName = rs.getString("fullname");
+			String email = rs.getString("email");
+			boolean updateByEmail = rs.getBoolean("updateByEmail");
+			return new Spitter(id, username, password, fullName, email, updateByEmail);
+		}		
+	}
+
+	private static final String INSERT_SPITTER = "insert into Spitter (username, password, fullname, email, updateByEmail) values (?, ?, ?, ?, ?)";
+
+	private static final String SELECT_SPITTER = "select id, username, password, fullname, email, updateByEmail from Spitter";
+
+}
+
+
+------------------------------------------
+spring data - using named parameter with NamedParameterJdbcTemplate
+
+@Bean
+public NamedParameterJdbcTemplate jdbcTemplate(DataSource dataSource) {
+    return new NamedParameterJdbcTemplate(dataSource);
+}
+
+// you should inject NamedParameterJdbcOperations to repository
+
+private static final String INSERT_SPITTER =
+    "insert into Spitter " +
+    " (username, password, fullname, email, updateByEmail) " +
+    "values " +
+    " (:username, :password, :fullname, :email, :updateByEmail)";
+
+public void addSpitter(Spitter spitter) {
+    Map<String, Object> paramMap = new HashMap<String, Object>();
+    paramMap.put("username", spitter.getUsername());
+    paramMap.put("password", spitter.getPassword());
+    paramMap.put("fullname", spitter.getFullName());
+    paramMap.put("email", spitter.getEmail());
+    paramMap.put("updateByEmail", spitter.isUpdateByEmail());
+    jdbcOperations.update(INSERT_SPITTER, paramMap);
+}
+
+------------------------------------------
+Spring data JPA @Service annotation
+
+- @Service applied to Service implementations
+- Spring will automatically register the Service implementation
+
+Purpose of Service Layer
+- Service Facade design pattern
+- Intermediate layer for custom business logic
+- Integrate data from multiple sources (DAO/repositories)
+
+// Defining service is as follows
+
+// Define service interface
+public interface CustomerService {
+	public List<Customer> getCustomers();
+}
+
+// Define service implementation
+@Service
+public class CustomerServiceImpl implements CustomerService {
+
+	@Autowired
+	private CustomerDAO customerDAO;
+
+	@Transactional
+	public List<Customer> getCustomers() {
+		…
+	}
+}
+
+// the DAO used to inject into service, does not use @Transactional
+@Repository
+public class CustomerDAOImpl implements CustomerDAO {
+	
+	@Autowired
+	private SessionFactory sessionFactory;
+	
+	public List<Customer> getCustomers() {
+		…
+	}
+}
+
+------------------------------------------
+Spring data JPA - Why use Service layer ( @Service annotation )
+
+BankDAO
+- deposit(...)
+- withdraw(...)
+
+If we are transferring funds, we want that to run in the same transaction. 
+By making use of @Transactional at service layer, then we can have this transactional support 
+and both methods will run in the same transaction. This would call deposit() and withdraw(). 
+If either of those methods failed then we'd want to roll the transaction back.

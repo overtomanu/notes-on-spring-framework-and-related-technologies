@@ -1,0 +1,1267 @@
+what is reactive programming
+--------------------------
+Reactive Streams aims to provide a standard for asynchronous stream processing with non-blocking backpressure
+
+Java Streams vs. Reactive Streams
+Java Streams are typically synchronous and work with a finite set of data. They're essentially a means of iterating over a collection with functions.
+Reactive Streams support asynchronous processing of datasets of any size, including infinite datasets. They process data in real time, as it becomes available, with back- pressure to avoid overwhelming their consumers.
+
+Reactive Streams specification
+--------------------------
+The Reactive Streams specification can be summed up by four interface definitions: Publisher, Subscriber, Subscription, and Processor. A Publisher produces data that it sends to a Subscriber per a Subscription. The Publisher interface declares a single method, subscribe(), through which a Subscriber can subscribe to the Publisher
+
+public interface Publisher<T> {
+    void subscribe(Subscriber<? super T> subscriber);
+}
+
+Once a Subscriber has subscribed, it can receive events from the Publisher. Those events are sent via methods on the Subscriber interface:
+
+public interface Subscriber<T> {
+  void onSubscribe(Subscription sub);
+  void onNext(T item);
+  void onError(Throwable ex);
+  void onComplete();
+}
+
+The first event that the Subscriber will receive is through a call to onSubscribe(). When the Publisher calls onSubscribe(), it passes a Subscription object to the Subscriber. It's through the Subscription that the Subscriber can manage its subscription:
+
+public interface Subscription {
+  void request(long n);
+  void cancel();
+}
+
+The Subscriber can call request() to request that data be sent, or it can call cancel() to indicate that it's no longer interested in receiving data and is canceling the sub- scription. When calling request(), the Subscriber passes in a long value to indi- cate how many data items it's willing to accept. This is where backpressure comes in, preventing the Publisher from sending more data than the Subscriber is able to han- dle. After the Publisher has sent as many items as were requested, the Subscriber can call request() again to request more.
+For every item that's published by the Publisher, the onNext() method will be called to deliver the data to the Subscriber. If there are any errors, onError() is called. If the Publisher has no more data to send and isn't going to produce any more data, it will call onComplete() to tell the Subscriber that it's out of business.
+
+The Processor interface, it's a combination of Subscriber and Publisher, as shown here:
+public interface Processor<T, R>
+            extends Subscriber<T>, Publisher<R> {}
+
+Reactor's core types
+--------------------------
+Mono and Flux are the 2 core reactive types and are implementations of Reactive Stream's Publisher interface.
+A Flux represents a pipe- line of zero, one, or many (potentially infinite) data items. A Mono is a specialized reactive type that's optimized for when the dataset is known to have no more than one data item.
+
+Diagramming reactive flow's
+--------------------------
+Marble diagrams are used to illustrate reactive flows
+ATTACH marble diagram
+
+Reactor maven dependencies
+--------------------------
+<dependency>
+    <groupId>io.projectreactor</groupId>
+    <artifactId>reactor-core</artifactId>
+</dependency>
+
+<!--test dependencies-->
+<dependency>
+    <groupId>io.projectreactor</groupId>
+    <artifactId>reactor-test</artifactId>
+    <scope>test</scope>
+</dependency>
+
+<!--Reactor's BOM (bill of materials)-->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-bom</artifactId>
+            <version>Bismuth-RELEASE</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+Reactive operations
+--------------------------
+Between Flux and Mono, there are over 500 operations, each of which can be loosely categorized as
+- Creation operations
+- Combination operations
+- Transformation operations and Logic operations
+
+Mono and Flux share many of the same operations.
+
+Prominent operations sample test code
+
+create flux from String objects
+----
+@Test
+public void createAFlux_just() {
+    Flux<String> fruitFlux = Flux
+        .just("Apple", "Orange", "Grape", "Banana", "Strawberry");
+}
+
+To add a subscriber, you can call the subscribe() method on the Flux:
+The lambda given to subscribe() here is actually a java.util.Consumer that's used to create a Reactive Streams Subscriber.
+----
+fruitFlux.subscribe(
+    f -> System.out.println("Here's some fruit: " + f)
+);
+
+StepVerifier Utility class to test Flux and Mono
+----
+StepVerifier.create(fruitFlux)
+    .expectNext("Apple")
+    .expectNext("Orange")
+    .expectNext("Grape")
+    .expectNext("Banana")
+    .expectNext("Strawberry")
+    .verifyComplete();
+
+Create flux from array:
+Can use fromIterable, fromStream methods to create flux from iterable and stream respectively
+Notably you can create a Flux from a java.util.List, java.util.Set using fromIterable method
+----
+@Test
+public void createAFlux_fromArray() {
+  String[] fruits = new String[] {
+      "Apple", "Orange", "Grape", "Banana", "Strawberry" };
+  Flux<String> fruitFlux = Flux.fromArray(fruits);
+  StepVerifier.create(fruitFlux)
+      .expectNext("Apple")
+      .expectNext("Orange")
+      .expectNext("Grape")
+      .expectNext("Banana")
+      .expectNext("Strawberry")
+      .verifyComplete();
+}
+
+generating flux of numbers
+----
+@Test
+public void createAFlux_range() {
+  Flux<Integer> intervalFlux =
+      Flux.range(1, 5);
+      StepVerifier.create(intervalFlux)
+  .expectNext(1)
+  .expectNext(2)
+  .expectNext(3)
+  .expectNext(4)
+  .expectNext(5)
+  .verifyComplete();
+}
+
+Flux which emits number after waiting for specified duration
+----
+Like the range() method, interval() creates a Flux that emits an incrementing value. But what makes interval()
+special is that instead of you giving it a starting and ending value, you specify a duration or how often a 
+value should be emitted.  take() operation to limit the results to the first five entries.
+
+//Below flux emits value every second
+@Test
+public void createAFlux_interval() {
+  Flux<Long> intervalFlux =
+      Flux.interval(Duration.ofSeconds(1))
+.take(5);
+  StepVerifier.create(intervalFlux)
+      .expectNext(0L)
+      .expectNext(1L)
+      .expectNext(2L)
+      .expectNext(3L)
+      .expectNext(4L)
+      .verifyComplete();
+}
+
+Combining reactive streams
+--------------------------
+Merging two Flux streams (mergeWith method)
+----
+delayElements() operation on Flux streams slows them down emitting an entry every 500 ms.
+delaySubscription() operation applied to the food Flux makes it not emit any data until 250 ms.
+Note: mergeWith() can't guarantee a perfect back and forth between its sources
+
+@Test
+public void mergeFluxes() {
+  Flux<String> characterFlux = Flux
+      .just("Garfield", "Kojak", "Barbossa")
+      .delayElements(Duration.ofMillis(500));
+  Flux<String> foodFlux = Flux
+      .just("Lasagna", "Lollipops", "Apples")
+      .delaySubscription(Duration.ofMillis(250))
+      .delayElements(Duration.ofMillis(500));
+  Flux<String> mergedFlux = characterFlux.mergeWith(foodFlux);
+  StepVerifier.create(mergedFlux)
+      .expectNext("Garfield")
+      .expectNext("Lasagna")
+      .expectNext("Kojak")
+      .expectNext("Lollipops")
+      .expectNext("Barbossa")
+      .expectNext("Apples")
+      .verifyComplete();
+}
+
+Combining Flux streams with zip method
+----
+When zip() operation is applied to Flux objects, it results in a new Flux that produces a tuple of items, where the tuple contains one item from each source Flux
+
+@Test
+public void zipFluxes() {
+  Flux<String> characterFlux = Flux
+      .just("Garfield", "Kojak", "Barbossa");
+  Flux<String> foodFlux = Flux
+      .just("Lasagna", "Lollipops", "Apples");
+  Flux<Tuple2<String, String>> zippedFlux =
+      Flux.zip(characterFlux, foodFlux);
+  StepVerifier.create(zippedFlux)
+    .expectNextMatches(p ->
+        p.getT1().equals("Garfield") &&
+        p.getT2().equals("Lasagna"))
+    .expectNextMatches(p ->
+        p.getT1().equals("Kojak") &&
+        p.getT2().equals("Lollipops"))
+    .expectNextMatches(p ->
+        p.getT1().equals("Barbossa") &&
+        p.getT2().equals("Apples"))
+        .verifyComplete();
+}
+
+If you'd rather not work with a Tuple2 and would rather work with some other type, you can provide a Function to zip() that produces any object you'd like
+
+@Test
+public void zipFluxesToObject() {
+  Flux<String> characterFlux = Flux
+      .just("Garfield", "Kojak", "Barbossa");
+  Flux<String> foodFlux = Flux
+      .just("Lasagna", "Lollipops", "Apples");
+  Flux<String> zippedFlux =
+      Flux.zip(characterFlux, foodFlux, (c, f) -> c + " eats " + f);
+  StepVerifier.create(zippedFlux)
+        .expectNext("Garfield eats Lasagna")
+        .expectNext("Kojak eats Lollipops")
+        .expectNext("Barbossa eats Apples")
+        .verifyComplete();
+}
+
+select first flux which emits data (first(flux1,flux2) method)
+--------------------------
+
+@Test
+public void firstFlux() {
+  Flux<String> slowFlux = Flux.just("tortoise", "snail", "sloth")
+        .delaySubscription(Duration.ofMillis(100));
+  Flux<String> fastFlux = Flux.just("hare", "cheetah", "squirrel");
+  Flux<String> firstFlux = Flux.first(slowFlux, fastFlux);
+  StepVerifier.create(firstFlux)
+      .expectNext("hare")
+      .expectNext("cheetah")
+      .expectNext("squirrel")
+      .verifyComplete();
+}
+
+Skip beginning data from reactive flux
+--------------------------
+skip() operation will create a new Flux that skips over a specified number of items before emitting the remaining items from the source Flux
+
+@Test
+public void skipAFew() {
+  Flux<String> skipFlux = Flux.just(
+      "one", "two", "skip a few", "ninety nine", "one hundred")
+      .skip(3);
+  StepVerifier.create(skipFlux)
+      .expectNext("ninety nine", "one hundred")
+      .verifyComplete();
+}
+
+skip() operation can also be used to skip elements emitted within certain duration
+
+@Test
+public void skipAFewSeconds() {
+  Flux<String> skipFlux = Flux.just(
+      "one", "two", "skip a few", "ninety nine", "one hundred")
+      .delayElements(Duration.ofSeconds(1))
+      .skip(Duration.ofSeconds(4));
+  StepVerifier.create(skipFlux)
+      .expectNext("ninety nine", "one hundred")
+      .verifyComplete();
+}
+
+Take only beginning data from reactive flux
+--------------------------
+take() only emits the first so many items
+----
+@Test
+public void take() {
+  Flux<String> nationalParkFlux = Flux.just(
+          "Yellowstone", "Yosemite", "Grand Canyon",
+          "Zion", "Grand Teton")
+.take(3);
+  StepVerifier.create(nationalParkFlux)
+      .expectNext("Yellowstone", "Yosemite", "Grand Canyon")
+      .verifyComplete();
+}
+
+
+take() to emit as many items as it can in the first 3.5 seconds after subscription
+----
+@Test
+public void take() {
+  Flux<String> nationalParkFlux = Flux.just(
+          "Yellowstone", "Yosemite", "Grand Canyon",
+          "Zion", "Grand Teton")
+      .delayElements(Duration.ofSeconds(1))
+      .take(Duration.ofMillis(3500));
+  StepVerifier.create(nationalParkFlux)
+      .expectNext("Yellowstone", "Yosemite", "Grand Canyon")
+      .verifyComplete();
+}
+
+Filtering items in flux
+--------------------------
+filter() operation allows us to do general purpose filtering of Flux values.
+filter() operation accepts function that decides whether an item will pass through the Flux or not.
+Thus it enables you to selectively publish items based on whatever criteria you want.
+
+@Test
+public void filter() {
+  Flux<String> nationalParkFlux = Flux.just(
+          "Yellowstone", "Yosemite", "Grand Canyon",
+          "Zion", "Grand Teton")
+      .filter(np -> !np.contains(" "));
+  StepVerifier.create(nationalParkFlux)
+    .expectNext("Yellowstone", "Yosemite", "Zion")
+    .verifyComplete();
+}
+
+Get distinct values from flux
+--------------------------
+@Test
+public void distinct() {
+  Flux<String> animalFlux = Flux.just(
+      "dog", "cat", "bird", "dog", "bird", "anteater")
+      .distinct();
+  StepVerifier.create(animalFlux)
+      .expectNext("dog", "cat", "bird", "anteater")
+      .verifyComplete();
+}
+
+Mapping reactive data with map() operation
+--------------------------
+The map() operation creates a Flux that simply performs a transformation as prescribed by a given Function on each object it receives before republishing it.
+In map() operation, the mapping is performed synchronously, as each item is published by the source Flux.
+Because the work is being done in parallel, with no guarantees on which will finish first, there's no way to 
+know the order of items emitted in the resulting Flux.
+
+// Flux of String values representing basketball players is mapped to a new Flux of Player objects
+@Test
+public void map() {
+  Flux<Player> playerFlux = Flux
+    .just("Michael Jordan", "Scottie Pippen", "Steve Kerr")
+    .map(n -> {
+      String[] split = n.split("\\s");
+      return new Player(split[0], split[1]);
+    });
+  StepVerifier.create(playerFlux)
+      .expectNext(new Player("Michael", "Jordan"))
+      .expectNext(new Player("Scottie", "Pippen"))
+      .expectNext(new Player("Steve", "Kerr"))
+      .verifyComplete();
+}
+
+Mapping reactive data asynchronously with flatmap() operation
+--------------------------
+If you want to perform the mapping asynchronously, you should consider the flatMap() operation.
+Instead of simply mapping one object to another, as in the case of map(), flatMap() maps each object to a new Mono or Flux. The results of the Mono or Flux are flattened into a new resulting Flux.
+
+subscribe() method in publisher interface is a verb, subscribing to a reactive flow and effectively kicking 
+it off, subscribeOn() is more descriptive, specifying how a subscription should be handled concurrently. 
+
+@Test
+public void flatMap() {
+  Flux<Player> playerFlux = Flux
+    .just("Michael Jordan", "Scottie Pippen", "Steve Kerr")
+    .flatMap(n -> Mono.just(n)
+        .map(p -> {
+            String[] split = p.split("\\s");
+            return new Player(split[0], split[1]);
+          })
+        .subscribeOn(Schedulers.parallel())
+);
+  List<Player> playerList = Arrays.asList(
+      new Player("Michael", "Jordan"),
+      new Player("Scottie", "Pippen"),
+      new Player("Steve", "Kerr"));
+  StepVerifier.create(playerFlux)
+      .expectNextMatches(p -> playerList.contains(p))
+      .expectNextMatches(p -> playerList.contains(p))
+      .expectNextMatches(p -> playerList.contains(p))
+      .verifyComplete();
+}
+
+Concurrency models supported by subscribeOn schedulers
+----
+.immediate() Executes the subscription in the current thread.
+.single()    Executes the subscription in a single, reusable thread. Reuses the same thread for all callers.
+.newSingle() Executes the subscription in a per-call dedicated thread.
+.elastic()   Executes the subscription in a worker pulled from an unbounded, elastic pool. 
+             New worker threads are created as needed, and idle workers are disposed of (by default, after 60 seconds).
+.parallel()  Executes the subscription in a worker pulled from a fixed-size pool, sized to the number of CPU cores.
+
+Buffering data on a reactive stream
+--------------------------
+buffer() operation helps you to break the stream of data into bite-size chunks.
+
+@Test
+public void buffer() {
+  Flux<String> fruitFlux = Flux.just(
+      "apple", "orange", "banana", "kiwi", "strawberry");
+  Flux<List<String>> bufferedFlux = fruitFlux.buffer(3);
+  StepVerifier
+      .create(bufferedFlux)
+      .expectNext(Arrays.asList("apple", "orange", "banana"))
+      .expectNext(Arrays.asList("kiwi", "strawberry"))
+      .verifyComplete();
+}
+
+combining buffer with flatmap
+----
+
+Flux.just(
+    "apple", "orange", "banana", "kiwi", "strawberry")
+    .buffer(3)
+    .flatMap(x ->
+      Flux.fromIterable(x)
+        .map(y -> y.toUpperCase())
+        .subscribeOn(Schedulers.parallel())
+        .log()
+    ).subscribe();
+
+collecting items into single list
+--------------------------
+Flux<List<String>> bufferedFlux = fruitFlux.buffer();
+
+or you can use collectList method
+
+@Test
+public void collectList() {
+  Flux<String> fruitFlux = Flux.just(
+      "apple", "orange", "banana", "kiwi", "strawberry");
+  Mono<List<String>> fruitListMono = fruitFlux.collectList();
+  StepVerifier
+      .create(fruitListMono)
+      .expectNext(Arrays.asList(
+          "apple", "orange", "banana", "kiwi", "strawberry"))
+      .verifyComplete();
+}
+
+collecting items into Map using collectMap operation
+--------------------------
+@Test
+public void collectMap() {
+  Flux<String> animalFlux = Flux.just(
+      "aardvark", "elephant", "koala", "eagle", "kangaroo");
+  Mono<Map<Character, String>> animalMapMono =
+      animalFlux.collectMap(a -> a.charAt(0));
+  StepVerifier
+      .create(animalMapMono)
+      .expectNextMatches(map -> {
+        return
+        map.size() == 3 &&
+        map.get('a').equals("aardvark") &&
+        map.get('e').equals("eagle") &&
+        map.get('k').equals("kangaroo");
+  })
+  .verifyComplete();
+}
+
+logic operations on flux using all() and any() operations
+--------------------------
+Using all() operation, a flux can be tested to ensure that all messages meet some condition with the all operation.
+Using any() operation, flux can be tested to ensure that at least one message meets some condition with the any operation.
+
+@Test
+public void all() {
+  Flux<String> animalFlux = Flux.just(
+      "aardvark", "elephant", "koala", "eagle", "kangaroo");
+  Mono<Boolean> hasAMono = animalFlux.all(a -> a.contains("a"));
+  StepVerifier.create(hasAMono)
+    .expectNext(true)
+    .verifyComplete();
+  Mono<Boolean> hasKMono = animalFlux.all(a -> a.contains("k"));
+  StepVerifier.create(hasKMono)
+    .expectNext(false)
+    .verifyComplete();
+}
+
+@Test
+public void any() {
+  Flux<String> animalFlux = Flux.just(
+      "aardvark", "elephant", "koala", "eagle", "kangaroo");
+  Mono<Boolean> hasAMono = animalFlux.any(a -> a.contains("t"));
+  StepVerifier.create(hasAMono)
+    .expectNext(true)
+    .verifyComplete();
+  Mono<Boolean> hasZMono = animalFlux.any(a -> a.contains("z"));
+  StepVerifier.create(hasZMono)
+    .expectNext(false)
+    .verifyComplete();
+}
+
+Spring boot webflux intro
+--------------------------
+Typical Servlet-based web frameworks, such as Spring MVC, are blocking and multi-threaded in nature, using a single thread per connection. Blocking web frameworks won't scale effectively under heavy request volume. Latency in slow worker threads makes things even worse because it'll take longer for the worker thread to be returned to the pool, ready to handle another request.
+
+Asynchronous web frameworks, in contrast, achieve higher scalability with fewer threads—generally one per CPU core. By applying a technique known as event looping
+In an event loop, everything is handled as an event, including requests and callbacks from intensive 
+operations like database and network operations. When a costly opera- tion is needed, the event loop registers 
+a callback for that operation to be performed in parallel, while it moves on to handle other events.
+ATTACH even loop diagram
+
+Spring boot webflux maven dependency
+--------------------------
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-webflux</artifactId>
+</dependency>
+
+simple spring boot reactive controller
+--------------------------
+//for non reactive repository
+@GetMapping("/recent")
+public Flux<Taco> recentTacos() {
+  return Flux.fromIterable(tacoRepo.findAll()).take(12);
+}
+
+//for reactive repository returning flux object
+@GetMapping("/recent")
+public Flux<Taco> recentTacos() {
+  return tacoRepo.findAll().take(12);
+}
+
+//reactive controller find by id
+@GetMapping("/{id}")
+public Mono<Taco> tacoById(@PathVariable("id") Long id) {
+  return tacoRepo.findById(id);
+}
+
+//reactive controller save domain object
+@PostMapping(consumes="application/json")
+@ResponseStatus(HttpStatus.CREATED)
+public Mono<Taco> postTaco(@RequestBody Mono<Taco> tacoMono) {
+  return tacoRepo.saveAll(tacoMono).next();
+}
+
+ATTACH "reactive controller and repository.png"
+
+springs new functional programming model for mapping requests (controller code)
+--------------------------
+- RequestPredicate — Declares the kind(s) of requests that will be handled
+- RouterFunction — Declares how a matching request should be routed to handler code
+- ServerRequest — Represents an HTTP request, including access to header and body information
+- ServerResponse — Represents an HTTP response, including header and body information
+
+Example controller code:
+----
+package demo;
+import static org.springframework.web.reactive.function.server.RequestPredicates.GET;
+import static org.springframework.web.reactive.function.server.RouterFunctions.route;
+import static org.springframework.web.reactive.function.server.ServerResponse.ok;
+import static reactor.core.publisher.Mono.just;
+import org.springframework.web.reactive.function.server.RouterFunction;
+
+@Configuration
+public class RouterFunctionConfig {
+    @Bean
+    public RouterFunction<?> helloRouterFunction() {
+      return route(GET("/hello"),
+          request -> ok().body(just("Hello World!"), String.class))
+        .andRoute(GET("/bye"),
+          request -> ok().body(just("See ya!"), String.class))
+        .andRoute(GET("/design/taco"), this::recents)
+        .andRoute(POST("/design"), this::postTaco);
+    }
+
+    public Mono<ServerResponse> recents(ServerRequest request) {
+        return ServerResponse.ok()
+            .body(tacoRepo.findAll().take(12), Taco.class);
+      }
+      public Mono<ServerResponse> postTaco(ServerRequest request) {
+        Mono<Taco> taco = request.bodyToMono(Taco.class);
+        Mono<Taco> savedTaco = tacoRepo.save(taco);
+        return ServerResponse
+      .created(URI.create(
+           "http://localhost:8080/design/taco/" +
+           savedTaco.getId()))
+      .body(savedTaco, Taco.class);
+    }
+}
+
+simple reactive repository for CRUD operations on domain objects
+--------------------------
+public interface TacoRepository
+         extends ReactiveCrudRepository<Taco, Long> {
+}
+
+
+Webflux exception handling
+--------------------------
+https://www.udemy.com/course/spring-framework-5-beginner-to-guru/learn/lecture/7866780#questions/8636928
+https://github.com/springframeworkguru/spring5-reactive-mongo-recipe-app/blob/8263080cf5739de52856679e258214303acbba91/src/main/java/guru/springframework/controllers/RecipeController.java#L86
+Thymeleaf template:
+https://github.com/springframeworkguru/spring5-reactive-mongo-recipe-app/blob/webflux-controller-advice/src/main/resources/templates/404error.html
+
+@Slf4j
+@Controller
+public class RecipeController {
+    // ... other methods
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    @ExceptionHandler({NotFoundException.class, TemplateInputException.class})
+    public String handleNotFound(Exception exception, Model model){
+
+        log.error("Handling not found exception");
+        log.error(exception.getMessage());
+
+        model.addAttribute("exception", exception);
+
+        return "404Error";
+    }
+}
+
+Webflux controller advice
+--------------------------
+https://www.udemy.com/course/spring-framework-5-beginner-to-guru/learn/lecture/7866794#questions
+https://github.com/springframeworkguru/spring5-reactive-mongo-recipe-app/blob/webflux-controller-advice/src/main/java/guru/springframework/controllers/ControllerExceptionHandler.java
+Thymeleaf template:
+https://github.com/springframeworkguru/spring5-reactive-mongo-recipe-app/blob/webflux-controller-advice/src/main/resources/templates/400error.html
+
+@Slf4j
+@ControllerAdvice
+public class ControllerExceptionHandler {
+
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(WebExchangeBindException.class)
+    public String handleNumberFormat(Exception exception, Model model){
+
+        log.error("Handling Binding Exception");
+        log.error(exception.getMessage());
+
+        model.addAttribute("exception", exception);
+
+        return "400error";
+    }
+}
+
+spring reactive file upload
+-----------------------
+single file upload
+---------
+html form:
+<div class="container mt-5">
+    <h1>Single File Upload Demo!</h1>
+    <form class="mt-3" action="upload/file/single" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <label >User</label>
+            <input type="text" name="user-name"> <br/><br/>
+            <label >Single</label>
+            <input type="file" name="fileToUpload" id="fileToUpload1">
+        </div>
+        <div class="form-group mt-3">
+            <button type="submit" class="btn btn-primary">Submit</button>
+        </div>
+    </form>
+</div>
+
+@RestController
+@RequestMapping("upload")
+public class UploadController {
+
+    private final Path basePath = Paths.get("./src/main/resources/upload/");
+
+    @PostMapping("file/single")
+    public Mono<Void> upload(@RequestPart("user-name") String name,
+                             @RequestPart("fileToUpload") Mono<FilePart> filePartMono){
+        System.out.println("user : " + name);
+        return  filePartMono
+                    .doOnNext(fp -> System.out.println("Received File : " + fp.filename()))
+                    .flatMap(fp -> fp.transferTo(basePath.resolve(fp.filename())))
+                    .then();
+    }
+
+}
+
+multiple file upload
+---------
+<div class="container mt-5">
+    <h1>Multiple File Upload Demo!</h1>
+    <form class="mt-3" action="upload/file/multi" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <label >Multi</label>
+            <input type="file" name="files" id="files" multiple>
+        </div>
+        <div class="form-group mt-3">
+            <button type="submit" class="btn btn-primary">Submit</button>
+        </div>
+    </form>
+</div>
+
+@PostMapping("file/multi")
+public Mono<Void> upload(@RequestPart("files") Flux<FilePart> partFlux){
+    return  partFlux
+                .doOnNext(fp -> System.out.println(fp.filename()))
+                .flatMap(fp -> fp.transferTo(basePath.resolve(fp.filename())))
+                .then();
+}
+
+testing spring reactive controller
+----------------------
+Reference:
+controller and repository tests
+https://github.com/springframeworkguru/spring5-reactive-mongo-recipe-app/tree/intro-to-webtest-client/src/test/java/guru/springframework
+
+WebTestClient webTestClient;
+@Mock
+RecipeService recipeService;
+
+@Test
+public void testGetRecipesWithData() throws Exception {
+
+    when(recipeService.getRecipes()).thenReturn(Flux.just(new Recipe(), new Recipe()));
+
+    webTestClient.get().uri("/api/recipes")
+            .accept(MediaType.APPLICATION_JSON)
+            .exchange()
+            .expectStatus().isOk()
+            .expectBodyList(Recipe.class);
+}
+
+getting query param reactively
+----------------------
+Reference:
+https://github.com/springframeworkguru/spring-rest-client-examples/blob/spring-webclient/src/main/java/guru/springframework/springrestclientexamples/controllers/UserController.java
+@PostMapping("/users")
+public String formPost(Model model, ServerWebExchange serverWebExchange) {
+
+    //non reactive way
+    //MultiValueMap<String, String> map = serverWebExchange.getFormData().block();
+    // Integer limit = new Integer(map.get("limit").get(0));
+    //log.debug("Received Limit value: " + limit);
+    //default if null or zero
+    //if(limit == null || limit == 0){
+    //    log.debug("Setting limit to default of 10");
+    //    limit = 10;
+    //}
+    // model.addAttribute("users", apiService.getUsers(limit));
+
+    model.addAttribute("users",
+            apiService
+                    .getUsers(serverWebExchange
+                            .getFormData()
+                            .map(data -> new Integer(data.getFirst("limit")))));
+
+    return "userlist";
+}
+
+reactive webclient - consuming REST services
+------------------
+https://github.com/springframeworkguru/spring-rest-client-examples/blob/spring-webclient/src/main/java/guru/springframework/springrestclientexamples/services/ApiServiceImpl.java
+
+@Override
+public Flux<User> getUsers(Mono<Integer> limit) {
+
+    return WebClient
+            .create(api_url)
+            .get()
+            .uri(uriBuilder -> uriBuilder.queryParam("limit", limit.block()).build())
+            .accept(MediaType.APPLICATION_JSON)
+            .exchange()
+            .flatMap(resp -> resp.bodyToMono(UserData.class))
+            .flatMapIterable(UserData::getData);
+}
+
+//craig walls spring in action 5th edition
+@Autowired
+WebClient webClient;
+public Mono<Ingredient> getIngredientById(String ingredientId) {
+    Mono<Ingredient> ingredient = webClient
+      .get()
+      .uri("/ingredients/{id}", ingredientId)
+      .retrieve()
+      .bodyToMono(Ingredient.class);
+    ingredient.subscribe(i -> { ... })
+}
+
+//specify timeouts
+Flux<Ingredient> ingredients = WebClient.create()
+        .get()
+        .uri("http://localhost:8080/ingredients")
+        .retrieve()
+        .bodyToFlux(Ingredient.class);
+
+ingredients
+    .timeout(Duration.ofSeconds(1))
+    .subscribe(
+        i -> { ... },
+        e -> {
+            // handle timeout error
+        }
+    )
+
+
+reactive webclient - POST to REST services
+------------------
+//sending resources
+Mono<Ingredient> ingredientMono = ...;
+Mono<Ingredient> result = webClient
+  .post()
+  .uri("/ingredients")
+  .body(ingredientMono, Ingredient.class)
+  .retrieve()
+  .bodyToMono(Ingredient.class);
+result.subscribe(i -> { ... })
+
+//sending resources when instead of a Mono<Ingredient>, you have an Ingredient object
+Ingredient ingredient = ...;
+Mono<Ingredient> result = webClient
+  .post()
+  .uri("/ingredients")
+  .syncBody(ingredient)
+  .retrieve()
+  .bodyToMono(Ingredient.class);
+result.subscribe(i -> { ... })
+
+reactive webclient - PUT request on REST services
+------------------
+Mono<Void> result = webClient
+  .put()
+  .uri("/ingredients/{id}", ingredient.getId())
+  .syncBody(ingredient)
+  .retrieve()
+  .bodyToMono(Void.class)
+  .subscribe();
+
+reactive webclient - DELETE request on REST services
+------------------
+Mono<Void> result = webClient
+  .delete()
+  .uri("/ingredients/{id}", ingredientId)
+  .retrieve()
+  .bodyToMono(Void.class)
+  .subscribe();
+
+reactive webclient - Handling errors while consuming REST service
+------------------
+Mono<Ingredient> ingredientMono = webClient
+.get()
+.uri("http://localhost:8080/ingredients/{id}", ingredientId)
+.retrieve()
+.bodyToMono(Ingredient.class);
+
+ingredientMono.subscribe(
+    ingredient -> {
+      // handle the ingredient data
+... },
+    error-> {
+      // deal with the error
+      ...
+});
+
+//OR, you can write custom error handler, you can provide code that 
+//translates a status code to a Throwable of your own choosing.
+Mono<Ingredient> ingredientMono = webClient
+    .get()
+    .uri("http://localhost:8080/ingredients/{id}", ingredientId)
+    .retrieve()
+    //can also use  .onStatus(status -> status == HttpStatus.NOT_FOUND,
+    .onStatus(HttpStatus::is4xxClientError,
+            response -> Mono.just(new UnknownIngredientException()))
+    .bodyToMono(Ingredient.class);
+
+reactive webclient - consuming REST service using exchange method
+------------------
+exchange() method has additional facility when compared to retrieve() method,
+in that it provides access to repsonse headers.
+Also you get a Mono<ClientResponse> on which you can apply a flat-mapping function 
+to map the ClientResponse to a Mono<Ingredient>
+
+//response from the request might include a header named X_UNAVAILABLE with a value of true 
+//to indicate that (for some reason) the ingredient in question is unavailable
+//you can handle this scenario by adding additional call to flatMap() as below
+Mono<Ingredient> ingredientMono = webClient
+    .get()
+    .uri("http://localhost:8080/ingredients/{id}", ingredientId)
+    .exchange()
+    .flatMap(cr -> {
+      if (cr.headers().header("X_UNAVAILABLE").contains("true")) {
+        return Mono.empty();
+      }
+      return Mono.just(cr);
+    })
+    .flatMap(cr -> cr.bodyToMono(Ingredient.class));
+
+spring reactive - Configuring Spring Security for a Spring WebFlux application
+------------------
+@Configuration
+@EnableWebFluxSecurity                          //instead of @EnableWebSecurity as in MVC
+public class SecurityConfig {
+  @Bean
+  public SecurityWebFilterChain securityWebFilterChain(
+                                           ServerHttpSecurity http) {
+    return http
+        .authorizeExchange()                    //instead of authorizeRequests as in MVC
+          .pathMatchers("/design", "/orders").hasAuthority("USER")      //instead of antMatchers
+          .anyExchange().permitAll()
+      .and()
+    }
+}
+
+//configuring user repository for security
+@Service
+public ReactiveUserDetailsService userDetailsService(
+                                          UserRepository userRepo) {
+  return new ReactiveUserDetailsService() {
+    @Override
+    public Mono<UserDetails> findByUsername(String username) {
+      return userRepo.findByUsername(username)
+        .map(user -> {
+            return user.toUserDetails();
+        });
+    }
+  };
+}
+
+spring data reactive repositories - common repository methods
+------------------
+Flux<Ingredient> findByType(Ingredient.Type type);
+<Taco> Flux<Taco> saveAll(Publisher<Taco> tacoPublisher);
+
+Converting between reactive and non-reactive types
+----
+List<Order> orders = repo.findByUser(someUser);
+Flux<Order> orderFlux = Flux.fromIterable(orders);
+
+Order order repo.findById(Long id);
+Mono<Order> orderMono = Mono.just(order);
+
+
+saving reactive types (mono,flux) using spring data JPA repository
+----
+Taco taco = tacoMono.block();
+tacoRepo.save(taco);
+
+Iterable<Taco> tacos = tacoFlux.toIterable();
+tacoRepo.saveAll(tacos);
+
+or
+
+tacoFlux.subscribe(taco -> {
+  tacoRepo.save(taco);
+});
+
+spring data reactive mongo repository
+------------------
+Maven dependency
+----
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>
+    spring-boot-starter-data-mongodb
+  </artifactId>
+</dependency>
+
+<dependency>
+  <groupId>de.flapdoodle.embed</groupId>
+  <artifactId>de.flapdoodle.embed.mongo</artifactId>
+</dependency>
+
+
+package tacos.data;
+import org.springframework.data.repository.reactive.ReactiveCrudRepository;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import tacos.Ingredient;
+@CrossOrigin(origins="*")
+//portable across different Databases/Stores
+public interface IngredientRepository
+         extends ReactiveCrudRepository<Ingredient, String> {
+}
+
+//below repository is specific to mongodb and is optimized for insert() operations
+package tacos.data;
+import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
+import reactor.core.publisher.Flux;
+import tacos.Taco;
+public interface TacoRepository
+         extends ReactiveMongoRepository<Taco, String> {
+  Flux<Taco> findByOrderByCreatedAtDesc();
+}
+
+
+reactive REST service operations GET, POST, PUT, PATCH
+------------------
+Reference:
+https://github.com/springframeworkguru/spring5-webflux-rest/blob/patch-vendor/src/main/java/guru/springframework/spring5webfluxrest/controllers/CategoryController.java
+reactive patch:
+https://github.com/springframeworkguru/spring5-webflux-rest/pull/2/commits/98626a02941b297e62b2c9e06586cc55792725e4
+
+@RestController
+public class CategoryController {
+
+    private final CategoryRepository categoryRepository;
+
+    public CategoryController(CategoryRepository categoryRepository) {
+        this.categoryRepository = categoryRepository;
+    }
+
+    @GetMapping("/api/v1/categories")
+    Flux<Category> list(){
+        return categoryRepository.findAll();
+    }
+
+    @GetMapping("/api/v1/categories/{id}")
+    Mono<Category> getById(@PathVariable String id){
+        return categoryRepository.findById(id);
+    }
+
+    @ResponseStatus(HttpStatus.CREATED)
+    @PostMapping("/api/v1/categories")
+    Mono<Void> create(@RequestBody Publisher<Category> categoryStream){
+        return categoryRepository.saveAll(categoryStream).then();
+    }
+
+    @PutMapping("/api/v1/categories/{id}")
+    Mono<Category> update(@PathVariable String id, @RequestBody Category category) {
+        category.setId(id);
+        return categoryRepository.save(category);
+    }
+
+    @PatchMapping("/api/v1/categories/{id}")
+    Mono<Category> patch(@PathVariable String id, @RequestBody Category category) {
+
+        return categoryRepository.findById(id)
+                .map(categoryToPatch -> {
+                    if (!categoryToPatch.getDescription().equals(category.getDescription())) {
+                        categoryToPatch.setDescription(category.getDescription());
+                    }
+                    return categoryToPatch;
+                })
+                .flatMap(categoryToSave ->
+                        categoryRepository.save(categoryToSave)
+                                .map(savedCategory -> savedCategory));
+    }
+}
+
+
+Testing reactive REST webservice controllers
+------------------
+import guru.springframework.spring5webfluxrest.domain.Category;
+import guru.springframework.spring5webfluxrest.repositories.CategoryRepository;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.Mockito;
+import org.reactivestreams.Publisher;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+public class CategoryControllerTest {
+
+    WebTestClient webTestClient;
+    CategoryRepository categoryRepository;
+    CategoryController categoryController;
+
+    @Before
+    public void setUp() throws Exception {
+        categoryRepository = Mockito.mock(CategoryRepository.class);
+        categoryController = new CategoryController(categoryRepository);
+        webTestClient = WebTestClient.bindToController(categoryController).build();
+    }
+
+    @Test
+    public void list() {
+        given(categoryRepository.findAll())
+                .willReturn(Flux.just(Category.builder().description("Cat1").build(),
+                        Category.builder().description("Cat2").build()));
+        webTestClient.get()
+                .uri("/api/v1/categories/")
+                .exchange()
+                .expectBodyList(Category.class)
+                .hasSize(2);
+    }
+
+    @Test
+    public void getById() {
+        given(categoryRepository.findById("someid"))
+                .willReturn(Mono.just(Category.builder().description("Cat").build()));
+        webTestClient.get()
+                .uri("/api/v1/categories/someid")
+                .exchange()
+                .expectBody(Category.class);
+    }
+
+
+    @Test
+    public void testCreateCateogry() {
+        given(categoryRepository.saveAll(any(Publisher.class)))
+                .willReturn(Flux.just(Category.builder().description("descrp").build()));
+
+        Mono<Category> catToSaveMono = Mono.just(Category.builder().description("Some Cat").build());
+        webTestClient.post()
+                .uri("/api/v1/categories")
+                .body(catToSaveMono, Category.class)
+                .exchange()
+                .expectStatus()
+                .isCreated();
+    }
+
+    @Test
+    public void testUpdate() {
+        given(categoryRepository.save(any(Category.class)))
+                .willReturn(Mono.just(Category.builder().build()));
+
+        Mono<Category> catToUpdateMono = Mono.just(Category.builder().description("Some Cat").build());
+        webTestClient.put()
+                .uri("/api/v1/categories/asdfasdf")
+                .body(catToUpdateMono, Category.class)
+                .exchange()
+                .expectStatus()
+                .isOk();
+    }
+
+    @Test
+    public void testPatchWithChanges() {
+        given(categoryRepository.findById(anyString()))
+                .willReturn(Mono.just(Category.builder().build()));
+
+        given(categoryRepository.save(any(Category.class)))
+                .willReturn(Mono.just(Category.builder().build()));
+
+        Mono<Category> catToUpdateMono = Mono.just(Category.builder().description("New Description").build());
+        webTestClient.patch()
+                .uri("/api/v1/categories/asdfasdf")
+                .body(catToUpdateMono, Category.class)
+                .exchange()
+                .expectStatus()
+                .isOk();
+        verify(categoryRepository).save(any());
+    }
+
+    @Test
+    public void testPatchNoChanges() {
+        given(categoryRepository.findById(anyString()))
+                .willReturn(Mono.just(Category.builder().build()));
+
+        given(categoryRepository.save(any(Category.class)))
+                .willReturn(Mono.just(Category.builder().build()));
+
+        Mono<Category> catToUpdateMono = Mono.just(Category.builder().build());
+        webTestClient.patch()
+                .uri("/api/v1/categories/asdfasdf")
+                .body(catToUpdateMono, Category.class)
+                .exchange()
+                .expectStatus()
+                .isOk();
+        verify(categoryRepository, never()).save(any());
+    }
+}
+
+//Testing json attribute values
+public class DesignTacoControllerTest {
+    @Test
+    public void shouldReturnRecentTacos() {
+        Taco[] tacos = {
+          
+          //Creates some test data
+
+          testTaco(1L), testTaco(2L),
+          testTaco(3L), testTaco(4L),
+          testTaco(5L), testTaco(6L),
+          testTaco(7L), testTaco(8L),
+          testTaco(9L), testTaco(10L),
+          testTaco(11L), testTaco(12L),
+          testTaco(13L), testTaco(14L),
+          testTaco(15L), testTaco(16L)
+        };
+        Flux<Taco> tacoFlux = Flux.just(tacos);
+        TacoRepository tacoRepo = Mockito.mock(TacoRepository.class);
+
+        //Mocks TacoRepository
+
+        when(tacoRepo.findAll()).thenReturn(tacoFlux);
+        WebTestClient testClient = WebTestClient.bindToController(
+            new DesignTacoController(tacoRepo))
+        .build();
+        
+        //Creates a WebTestClient
+        
+        testClient.get().uri("/design/recent")
+
+            // Requests recent tacos
+
+            .exchange()
+
+            //Verifies expected response
+
+            .expectStatus().isOk()
+            .expectBody()
+                .jsonPath("$").isArray()
+                .jsonPath("$").isNotEmpty()
+                .jsonPath("$[0].id").isEqualTo(tacos[0].getId().toString())
+                .jsonPath("$[0].name").isEqualTo("Taco 1").jsonPath("$[1].id")
+                .isEqualTo(tacos[1].getId().toString()).jsonPath("$[1].name")
+                .isEqualTo("Taco 2").jsonPath("$[11].id")
+                .isEqualTo(tacos[11].getId().toString())
+                .jsonPath("$[11].name").isEqualTo("Taco 12").jsonPath("$[12]")
+                .doesNotExist();
+                .jsonPath("$[12]").doesNotExist();
+    }
+}
+
+
+//Testing POST requests
+@Test
+public void shouldSaveATaco() {
+  TacoRepository tacoRepo = Mockito.mock(
+              TacoRepository.class);
+  Mono<Taco> unsavedTacoMono = Mono.just(testTaco(null));
+  Taco savedTaco = testTaco(null);
+  savedTaco.setId(1L);
+  Mono<Taco> savedTacoMono = Mono.just(savedTaco);
+  
+  //Mocks TacoRepository
+  when(tacoRepo.save(any())).thenReturn(savedTacoMono);
+  
+  //Creates WebTestClient
+  WebTestClient testClient = WebTestClient.bindToController(
+      new DesignTacoController(tacoRepo)).build();
+  
+  //POSTs a taco
+  testClient.post()
+      .uri("/design")
+      .contentType(MediaType.APPLICATION_JSON)
+      .body(unsavedTacoMono, Taco.class)
+    .exchange()
+    
+    //Verifies response
+    .expectStatus().isCreated()
+    .expectBody(Taco.class)
+      .isEqualTo(savedTaco);
+}
+
+//Testing with a live server
+
+@RunWith(SpringRunner.class)
+@SpringBootTest(webEnvironment=WebEnvironment.RANDOM_PORT)
+public class DesignTacoControllerWebTest {
+  @Autowired
+  private WebTestClient testClient;
+
+  @Test
+  public void shouldReturnRecentTacos() throws IOException {
+  testClient.get().uri("/design/recent")
+      .accept(MediaType.APPLICATION_JSON).exchange()
+      .expectStatus().isOk()
+      .expectBody()
+      .jsonPath("$[?(@.id == 'TACO1')].name")
+          .isEqualTo("Carnivore")
+      .jsonPath("$[?(@.id == 'TACO2')].name")
+          .isEqualTo("Bovine Bounty")
+      .jsonPath("$[?(@.id == 'TACO3')].name")
+          .isEqualTo("Veg-Out");
+  }
+}
+
