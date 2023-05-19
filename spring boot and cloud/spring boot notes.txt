@@ -1440,7 +1440,7 @@ https://github.com/springframeworkguru/mssc-beer-service/issues/57
 Spring Boot doesn't provide a hystrix anymore so use resilience4j
 In the application.properties instead of 'feign.hystrix.enabled=true' should be the following property  'feign.circuitbreaker.enabled=true'.
 
-#add in application properties
+# add in application properties
 feign.hystrix.enabled=true
 
 #create feign client interface

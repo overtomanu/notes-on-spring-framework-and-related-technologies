@@ -4,7 +4,7 @@ Reactive Streams aims to provide a standard for asynchronous stream processing w
 
 Java Streams vs. Reactive Streams
 Java Streams are typically synchronous and work with a finite set of data. They're essentially a means of iterating over a collection with functions.
-Reactive Streams support asynchronous processing of datasets of any size, including infinite datasets. They process data in real time, as it becomes available, with back- pressure to avoid overwhelming their consumers.
+Reactive Streams support asynchronous processing of datasets of any size, including infinite datasets. They process data in real time, as it becomes available, with back-pressure to avoid overwhelming their consumers.
 
 Reactive Streams specification
 --------------------------
@@ -504,9 +504,9 @@ Typical Servlet-based web frameworks, such as Spring MVC, are blocking and multi
 
 Asynchronous web frameworks, in contrast, achieve higher scalability with fewer threads—generally one per CPU core. By applying a technique known as event looping
 In an event loop, everything is handled as an event, including requests and callbacks from intensive 
-operations like database and network operations. When a costly opera- tion is needed, the event loop registers 
-a callback for that operation to be performed in parallel, while it moves on to handle other events.
-ATTACH even loop diagram
+operations like database and network operations. When a costly operation is needed (not CPU intensive task, but time consuming costs like disk read, network I/O etc ), the event loop registers a callback for that operation to be performed in parallel, while it moves on to handle other events.
+
+ATTACH / REFER event loop diagram
 
 Spring boot webflux maven dependency
 --------------------------
