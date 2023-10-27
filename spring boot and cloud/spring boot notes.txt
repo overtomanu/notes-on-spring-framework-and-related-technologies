@@ -267,6 +267,7 @@ application-{profile name}.yml OR application-{profile name}.properties
 Another way to specify profile-specific properties works only with YAML configuration. 
 It involves placing profile-specific properties alongside non-profiled properties in application.yml, 
 separated by three hyphens and the spring.profiles property to name the profile.
+UPDATE: NOTE: spring.config.activate.on-profile (known as spring.profiles before Spring Boot 2.4) can be used to mark a configuration file segment profile-specific.
 Example:
 
 logging:
@@ -283,6 +284,27 @@ spring:
 logging:
   level:
     tacos: WARN
+
+----------------------------------
+After spring boot 2.4
+----------------------------------
+
+server:
+  port: 9000
+---
+spring:
+  config:
+    activate:
+      on-profile: "development"
+server:
+  port: 9001
+---
+spring:
+  config:
+    activate:
+      on-profile: "production"
+server:
+  port: 0
 
 spring boot Activating profiles:
 -----------------------------------------
