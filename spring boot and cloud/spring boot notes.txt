@@ -1776,3 +1776,7 @@ ATTACH image: "swagger UI.png"
 You can generate client code in various programming languages for API's exposed 
 using swagger/OpenAPI documentation.
 https://github.com/OpenAPITools/openapi-generator
+
+Running spring boot application using maven
+-------------------------------------------
+mvn spring-boot:run -Drun.arguments="--server.port=7070"
